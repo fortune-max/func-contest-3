@@ -77,7 +77,6 @@ int perform_op (int left, int right, int sign) {
     } else {
       int sign = sl~load_uint(8);   ;; * or / if first run. + or - if subsequent run
       bits_done += 8; bits_left -= 8;
-      (_, hint) = sl.load_uint(8);
       (int sub_calc, processed) = mul_div(sl, bits_left);
       sl~skip_bits(processed); bits_done += processed; bits_left -= processed;
       ans = perform_op(ans, sub_calc, sign);
@@ -90,12 +89,12 @@ int perform_op (int left, int right, int sign) {
 (int, int) mul_div (slice sl, int bits_left) inline {
     (int ans, int processed, int bits_done) = (-1, 0, 0);
     (_, int hint) = sl.load_uint(8);
-    if (hint == 40) {     ;; left_bracket after sign
+    if (hint == 40) {     ;; left_bracket after + or - sign
         (ans, processed) = brackets(sl, bits_left, 0);
         sl~skip_bits(processed); bits_done += processed; bits_left -= processed;
-    } else {              ;; NUM after sign
+    } else {              ;; NUM after + or - sign
         (ans, processed) = nxt_num(sl, bits_left);
-        sl~skip_bits(processed); bits_done = processed; bits_left -= processed;
+        sl~skip_bits(processed); bits_done += processed; bits_left -= processed;
     }
 
     while (bits_left >= 8) {
@@ -146,7 +145,7 @@ int perform_op (int left, int right, int sign) {
 }
 
 (int, int) fme (int a, int b) method_id {
-    cell msg = begin_cell().store_uint(4229011242127624747350169850645464135826607845069045603044265243177, 224).end_cell();     ;; -3 -9 = -12
+    cell msg = begin_cell().store_uint(21049533804892064848820853960209038218164457837627546297113849145, 216).end_cell();     ;; -3 -9 = -12
     slice sl = msg.begin_parse();
     (int ans, int bits) = brackets(sl,slice_bits(sl), -1);
     ~dump([911, ans]);
