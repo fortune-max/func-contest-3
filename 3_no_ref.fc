@@ -132,8 +132,9 @@ int perform_op (int left, int right, int sign) {
     .store_uint(0x18, 6)
     .store_slice(sender_address)  ;; addr dest
     .store_grams(0)
-    .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
-    .store_slice(response_message_body.begin_parse())
+    .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 0)
+    .store_uint(1, 1)
+    .store_ref(response_message_body)
     .end_cell();
 
   send_raw_message(response_msg, 64);
