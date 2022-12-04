@@ -86,8 +86,11 @@ int perform_op (int left, int right, int sign) inline {
     return left / right;
   } elseif (sign == 42) {
     return left * right;
-  } else {
+  } elseif (sign == 45) {
     return left - right;
+  } else {
+    while (sign) { ~dump(sign); }   ;; this sign not handled. use */-+
+    return 42;
   }
 }
 
@@ -115,12 +118,8 @@ int perform_op (int left, int right, int sign) inline {
     hint = tmp_slice~load_uint(8);
   }
 
-  ;; take care of stuff (Not '(' nor num after '(' )
-  while (~ ((hint == 40) | ((hint >= 48) & (hint <= 57))) ) {
-    ~dump(999);
-  }
   (int ans, int processed) = (0, 0);
-  if (hint == 40){
+  if (hint == 40){      ;; first elem content in bracket is (
     (ans, processed) = brackets(sl, bits_left_local, bits_left_global, 0);
     if (bits_left_local > processed){
       sl~skip_bits(processed); bits_done += processed; bits_left_local -= processed; bits_left_global -= processed;
@@ -128,7 +127,7 @@ int perform_op (int left, int right, int sign) inline {
       (_, sl) = load_bits_custom(sl, processed);
       bits_done += processed; bits_left_local = slice_bits(sl); bits_left_global -= processed;
     }
-  } else {
+  } elseif ((hint >= 48) & (hint <= 57)) {        ;; first elem content in bracket is number
     (ans, processed) = nxt_num(sl, bits_left_local, bits_left_global);
     if (bits_left_local > processed){
       sl~skip_bits(processed); bits_done += processed; bits_left_local -= processed; bits_left_global -= processed;
@@ -136,6 +135,8 @@ int perform_op (int left, int right, int sign) inline {
       (_, sl) = load_bits_custom(sl, processed);
       bits_done += processed; bits_left_local = slice_bits(sl); bits_left_global -= processed;
     }
+  } else {
+    while (hint) { ~dump(hint); }   ;; first element content in bracket not handled
   }
 
   while (bits_left_global >= 8) {
@@ -163,7 +164,7 @@ int perform_op (int left, int right, int sign) inline {
         hint = tmp_slice~load_uint(8);
       }
 
-      if (hint == 40){
+      if (hint == 40){  ;; sign then left_bracket
         (int sub_calc, processed) = brackets(sl, bits_left_local, bits_left_global, 0);
         if (bits_left_local > processed){
           sl~skip_bits(processed); bits_done += processed; bits_left_local -= processed; bits_left_global -= processed;
@@ -172,7 +173,7 @@ int perform_op (int left, int right, int sign) inline {
           bits_done += processed; bits_left_local = slice_bits(sl); bits_left_global -= processed;
         }
         ans = perform_op(ans, sub_calc, sign);
-      } else {
+      } elseif ((hint >= 48) & (hint <= 57)) {    ;; sign then numbers/mul_div number sequence, use mul_div to process
         (int sub_calc, processed) = mul_div(sl, bits_left_local, bits_left_global);
         if (bits_left_local > processed){
           sl~skip_bits(processed); bits_done += processed; bits_left_local -= processed; bits_left_global -= processed;
@@ -181,6 +182,8 @@ int perform_op (int left, int right, int sign) inline {
           bits_done += processed; bits_left_local = slice_bits(sl); bits_left_global -= processed;
         }
         ans = perform_op(ans, sub_calc, sign);
+      } else {
+        while (hint) { ~dump(hint); }   ;; unhandled element after sign (not num nor left_bracket)
       }
     }
   }
@@ -207,7 +210,7 @@ int perform_op (int left, int right, int sign) inline {
 
     if ((hint == 43) | (hint == 45) | (hint == 41)) {  ;; + or - or ) met, excl
       bits_left_global = 0;
-    } else {  ;; * or /
+    } elseif ((hint == 42) | (hint == 47)) {  ;; * or /
       int sign = hint;      ;; * or /
       if (bits_left_local > 8){
         sl~skip_bits(8); bits_left_local -= 8; bits_done += 8; bits_left_global -= 8;
@@ -222,7 +225,7 @@ int perform_op (int left, int right, int sign) inline {
         hint = tmp_slice~load_uint(8);
       }
 
-      if (hint == 40) {   ;; (
+      if (hint == 40) {   ;; sign then left_bracket
         (int sub_calc, processed) = brackets(sl, bits_left_local, bits_left_global, 0);
         if (bits_left_local > processed){
           sl~skip_bits(processed); bits_done += processed; bits_left_local -= processed; bits_left_global -= processed;
@@ -231,7 +234,7 @@ int perform_op (int left, int right, int sign) inline {
           bits_done += processed; bits_left_local = slice_bits(sl); bits_left_global -= processed;
         }
         ans = perform_op(ans, sub_calc, sign);
-      } else {    ;; NUM
+      } elseif ((hint >= 48) & (hint <= 57)) {    ;; sign then (contiguous) number(s)
         (int sub_calc, processed) = nxt_num(sl, bits_left_local, bits_left_global);
         if (bits_left_local > processed){
           sl~skip_bits(processed); bits_done += processed; bits_left_local -= processed; bits_left_global -= processed;
@@ -241,6 +244,8 @@ int perform_op (int left, int right, int sign) inline {
         }
         ans = perform_op(ans, sub_calc, sign);
       }
+    } else {
+      while (hint) { ~dump(hint); }   ;; unhandled element after sign, only accepts NUMs and left_bracket
     }
   }
   return (ans, bits_done);
@@ -272,7 +277,7 @@ int perform_op (int left, int right, int sign) inline {
 }
 
 (int, int) fme (int a, int b) method_id {
-    cell msg = begin_cell().store_uint(0x2d392b282d322d34292a282d382b3229, 128).end_cell();     ;; 2 => 50
+    cell msg = begin_cell().store_uint(3746617, 24).end_cell();     ;; 2 => 50
     slice sl = msg.begin_parse();
     (int ans, int bits) = brackets(sl,slice_bits(sl), get_total_bits(sl), -1);
     ~dump([13, ans]);
