@@ -79,7 +79,7 @@ slice tointeger_slice(int num) {
   return (num, bits_done);
 }
 
-int perform_op (int left, int right, int sign) inline {
+int perform_op (int left, int right, int sign) {  ;; warning DO NOT inline this
   if (sign == 43){
     return left + right;
   } elseif (sign == 47) {
@@ -277,7 +277,7 @@ int perform_op (int left, int right, int sign) inline {
 }
 
 (int, int) fme (int a, int b) method_id {
-    cell msg = begin_cell().store_uint(3746617, 24).end_cell();     ;; 2 => 50
+    cell msg = begin_cell().store_uint(245538303795, 40).end_cell();     ;; 2 => 50
     slice sl = msg.begin_parse();
     (int ans, int bits) = brackets(sl,slice_bits(sl), get_total_bits(sl), -1);
     ~dump([13, ans]);
@@ -285,7 +285,7 @@ int perform_op (int left, int right, int sign) inline {
     ~dump(slice_bits(sl));
     ~dump(sl~load_uint(8));
     ~dump(sl~load_uint(8));
-    
+    ;;~dump(sl~load_uint(8));
     ~dump(99);
     return (3, 4);
 }
