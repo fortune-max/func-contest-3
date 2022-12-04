@@ -81,36 +81,36 @@ int perform_op (int left, int right, int sign) {
 
 ;; expects at least 1 digit in slice. Proceeds execution till + or - or eof met
 (int, int) mul_div (slice sl, int bits_left) {
-    (int ans, int processed, int bits_done) = (-1, 0, 0);
-    (_, int hint) = sl.load_uint(8);
-    if (hint == 40) {     ;; left_bracket after + or - sign
-        (ans, processed) = brackets(sl, bits_left, 0);
-        sl~skip_bits(processed); bits_done += processed; bits_left -= processed;
-    } else {              ;; NUM after + or - sign
-        (ans, processed) = nxt_num(sl, bits_left);
-        sl~skip_bits(processed); bits_done += processed; bits_left -= processed;
-    }
+  (int ans, int processed, int bits_done) = (-1, 0, 0);
+  (_, int hint) = sl.load_uint(8);
+  if (hint == 40) {     ;; left_bracket after + or - sign
+    (ans, processed) = brackets(sl, bits_left, 0);
+    sl~skip_bits(processed); bits_done += processed; bits_left -= processed;
+  } else {              ;; NUM after + or - sign
+    (ans, processed) = nxt_num(sl, bits_left);
+    sl~skip_bits(processed); bits_done += processed; bits_left -= processed;
+  }
 
-    while (bits_left >= 8) {
-        (_, hint) = sl.load_uint(8);
-        if ((hint == 41) | (hint == 43) | (hint == 45)) {   ;; right_bracket, + or - after NUM
-            bits_left = 0;
-        } else {                                  ;; * or / sign after NUM or right_bracket
-            int sign = sl~load_uint(8);
-            bits_done += 8; bits_left -= 8;
-            (_, hint) = sl.load_uint(8);
-            if (hint == 40) {       ;; left_bracket after sign
-                (int sub_calc, processed) = brackets(sl, bits_left, 0);
-                sl~skip_bits(processed); bits_done += processed; bits_left -= processed;
-                ans = perform_op(ans, sub_calc, sign);
-            } else {                ;; NUM after sign
-                (int sub_calc, processed) = nxt_num(sl, bits_left);
-                sl~skip_bits(processed); bits_done += processed; bits_left -= processed;
-                ans = perform_op(ans, sub_calc, sign);
-            }
-        }
+  while (bits_left >= 8) {
+    (_, hint) = sl.load_uint(8);
+    if ((hint == 41) | (hint == 43) | (hint == 45)) {   ;; right_bracket, + or - after NUM
+      bits_left = 0;
+    } else {                                  ;; * or / sign after NUM or right_bracket
+      int sign = sl~load_uint(8);
+      bits_done += 8; bits_left -= 8;
+      (_, hint) = sl.load_uint(8);
+      if (hint == 40) {       ;; left_bracket after sign
+        (int sub_calc, processed) = brackets(sl, bits_left, 0);
+        sl~skip_bits(processed); bits_done += processed; bits_left -= processed;
+        ans = perform_op(ans, sub_calc, sign);
+      } else {                ;; NUM after sign
+        (int sub_calc, processed) = nxt_num(sl, bits_left);
+        sl~skip_bits(processed); bits_done += processed; bits_left -= processed;
+        ans = perform_op(ans, sub_calc, sign);
+      }
     }
-    return (ans, bits_done);
+  }
+  return (ans, bits_done);
 }
 
 ;; testable
@@ -140,11 +140,11 @@ int perform_op (int left, int right, int sign) {
 }
 
 (int, int) fme (int a, int b) method_id {
-    cell msg = begin_cell().store_uint(16393665708263953322375373876328806561833, 136).end_cell();     ;; -3 -9 = -12
-    slice sl = msg.begin_parse();
-    (int ans, int bits) = brackets(sl,slice_bits(sl), -1);
-    ~dump([911, ans]);
-    (int integer_rep, _) = tointeger(ans);
-    ~dump(integer_rep);
-    return (3, 4);
+  cell msg = begin_cell().store_uint(16393665708263953322375373876328806561833, 136).end_cell();     ;; -3 -9 = -12
+  slice sl = msg.begin_parse();
+  (int ans, int bits) = brackets(sl,slice_bits(sl), -1);
+  ~dump([911, ans]);
+  (int integer_rep, _) = tointeger(ans);
+  ~dump(integer_rep);
+  return (3, 4);
 }
