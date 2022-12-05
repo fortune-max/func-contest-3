@@ -103,6 +103,23 @@ cell set_body (cell msg, int msg_idx, cell msgs){
   return b.end_cell();
 }
 
+() send_cell (cell to_send, int value) {
+  cell address = begin_cell().store_uint(4, 3)
+    .store_uint(0, 8)
+    .store_uint(0, 256).end_cell();
+
+  cell response_msg = begin_cell()
+    .store_uint(0x18, 6)
+    .store_slice(address.begin_parse())
+    .store_grams(value)
+    .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 0)
+    .store_uint(1, 1)
+    .store_ref(to_send)
+    .end_cell();
+
+  send_raw_message(response_msg, 0);
+}
+
 ;; testable
 () recv_internal (slice in_msg_body) {
   (int score, int value, cell msg) = (in_msg_body~load_uint(32), in_msg_body~load_coins(), in_msg_body~load_ref());
@@ -152,7 +169,7 @@ cell set_body (cell msg, int msg_idx, cell msgs){
   slice sl = get_data().begin_parse(); slice sl_2 = sl;
   int curr_idx = sl~load_uint(16) + 1;
   int highest_score = score; int highest_score_idx = curr_idx;
-  int lowest_value = value; int lowest_value_idx = curr_idx;
+  int lowest_value = value; int lowest_value_idx = curr_idx; int lowest_value_secondary = value;
   int ct = 12; int entries = 1;   ;; TODO modify array after done
   while (ct) {
     int curr_score = sl~load_int(33); int curr_score_idx = sl~load_uint(16); ct -= 1;
@@ -167,26 +184,21 @@ cell set_body (cell msg, int msg_idx, cell msgs){
     if (curr_value < lowest_value) {
       lowest_value = curr_value; lowest_value_idx = curr_value_idx;
     }
-  }
-
-  cell cell_tree = sl~load_ref();
-
-  if (entries == 12){   ;; drop one or two
-    
-    (cell new_data, cell to_send) = get_body(cell_tree, lowest_value_idx);    ;; TODO store new_data in refs
-    ;; set_data(new_data);
-    ;;send_cell(to_send);    ;; TODO fix mode (actually this is jyst bosy)
-    if (lowest_value_idx != highest_score_idx) {
-      (cell new_data, cell to_send) = get_body(cell_tree, lowest_value_idx);
-      ;; set_data(new_data);    ;; TODO uncomment this if cell_tree rm from g/set_body args
-      ;;send_cell(to_send);
-      (new_data, cell to_send) = get_body(cell_tree, highest_score_idx);
-      ;;send_cell(to_send);
+    if (curr_value_idx == highest_score_idx) {
+      lowest_value_secondary = curr_value;
     }
   }
 
+  cell cell_tree = sl~load_ref();
+  (cell new_data, cell to_send) = get_body(cell_tree, lowest_value_idx);
+  send_cell(to_send, lowest_value);
+  if (lowest_value_idx != highest_score_idx) {
+    (new_data, to_send) = get_body(new_data, highest_score_idx);
+    send_cell(to_send, lowest_value_secondary);
+  }
+
   ;; Update persistent storage
-  ct = 12; builder b = begin_cell().store_uint(curr_idx, 16).store_ref(cell_tree); int remaining = 12;    ;; confirm cell_tree right var
+  ct = 12; builder b = begin_cell().store_uint(curr_idx, 16).store_ref(new_data); int remaining = 12;    ;; confirm cell_tree right var
   while (ct) {
     int curr_score = sl_2~load_int(33); int curr_score_idx = sl_2~load_uint(16); ct -= 1;
     if ((curr_score_idx != highest_score_idx) & (curr_score_idx != lowest_value_idx)){
