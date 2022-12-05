@@ -190,15 +190,18 @@ cell set_body (cell msg, int msg_idx, cell msgs){
   }
 
   cell cell_tree = sl~load_ref();
-  (cell new_data, cell to_send) = get_body(cell_tree, lowest_value_idx);
-  send_cell(to_send, lowest_value);
-  if (lowest_value_idx != highest_score_idx) {
-    (new_data, to_send) = get_body(new_data, highest_score_idx);
-    send_cell(to_send, lowest_value_secondary);
+  cell_tree = set_body(msg, curr_idx, cell_tree);
+  if (entries == 12){
+    (cell_tree, cell to_send) = get_body(cell_tree, lowest_value_idx);
+    send_cell(to_send, lowest_value);
+    if (lowest_value_idx != highest_score_idx) {
+      (cell_tree, to_send) = get_body(cell_tree, highest_score_idx);
+      send_cell(to_send, lowest_value_secondary);
+    }
   }
 
   ;; Update persistent storage
-  ct = 12; builder b = begin_cell().store_uint(curr_idx, 16).store_ref(new_data); int remaining = 12;    ;; confirm cell_tree right var
+  ct = 12; builder b = begin_cell().store_uint(curr_idx, 16).store_ref(cell_tree); int remaining = 12;
   while (ct) {
     int curr_score = sl_2~load_int(33); int curr_score_idx = sl_2~load_uint(16); ct -= 1;
     if ((curr_score_idx != highest_score_idx) & (curr_score_idx != lowest_value_idx)){
