@@ -136,11 +136,20 @@ cell set_body (cell msg, int msg_idx, cell msgs){
         .end_cell()
     )
     .end_cell();
-  }
-  ;;   ;; persistent storage schema
     
+    int ct = 12; builder b = begin_cell().store_ref(cell_tree).store_uint(12, 16);  ;; last_idx
+    while (ct) {  ;; dummy (score, idx) pairs
+      b~store_int(-1, 33); b~store_uint(ct, 16); ct -= 1;   ;; CAUTION, unpack with load_int for score
+    }
+    ct = 12;
+    while (ct) {   ;; dummy (value, idx) pairs
+      b~store_uint(131071, 17); b~store_uint(ct, 16); ct -= 1;    ;; CAUTION 17-bits used
+    }
+    cell my_data = b.end_cell();
+    set_data(my_data);
+  }
 
-  ;; ;; always executed
+
 
 }
 
