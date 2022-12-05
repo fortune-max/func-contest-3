@@ -15,16 +15,13 @@ int get_total_bits (slice sl) {
 }
 
 slice get_slice(slice sl, int start_idx, int bit_count){
-  int bit_count_dup = bit_count;
-  int slice_first_idx = 0;
-  int slice_last_idx = slice_bits(sl) - 1;
+  (int slice_first_idx, int slice_last_idx) = (0, slice_bits(sl) - 1);
   while ((start_idx > slice_last_idx) & (slice_refs(sl) > 0)) {
     sl = (sl~load_ref()).begin_parse();
-    slice_first_idx = slice_last_idx + 1;
-    slice_last_idx += slice_bits(sl);
+    slice_first_idx = slice_last_idx + 1; slice_last_idx += slice_bits(sl);
   }
   builder b = begin_cell();
-  sl~load_uint(start_idx - slice_first_idx);  ;; might be unsafe
+  sl~skip_bits(start_idx - slice_first_idx);  ;; might be unsafe
   while (bit_count & (slice_bits(sl) > 0)){
     int to_take = min(slice_bits(sl), bit_count);
     b~store_uint(sl~load_uint(to_take), to_take);
@@ -42,25 +39,33 @@ int get_uint(slice sl, int start_idx, int bit_count){
   return ans~load_uint(slice_bits(ans));
 }
 
-(int, int) tointeger(int num) inline {
-  (int ans, int multiplier, int bits, int is_negative) = (0, 1, 0, 0);
+slice tointeger_slice(int num) {
+  builder b = begin_cell(); int is_negative = 0;
   if (num < 0) {
     is_negative = -1; num *= -1;
   }
   do {
     int digit = num % 10;
     num /= 10;
-    ans += multiplier * (digit + 48);
-    bits += 8;
-    multiplier *= 256;
+    b~store_uint(digit + 48, 8);
   } until (num == 0);
+  cell ans = b.end_cell();
+
+  b = begin_cell();
   if (is_negative) {
-    bits += 8; ans += multiplier * 45;     ;; add -ve sign
+    b~store_uint(45, 8);
   }
-  return (ans, bits);
+  slice sl = ans.begin_parse();
+  int length = slice_bits(sl);
+  int neg_idx = 8;
+  do {
+    (_, int tmp) = sl.slice_last(neg_idx).load_uint(8);
+    b~store_uint(tmp, 8);
+    neg_idx += 8;
+  } until (neg_idx > length);
+  return b.end_cell().begin_parse();
 }
 
-;; expects at least 1 digit (8-bit) in slice
 (int, int) nxt_num(slice sl, int bits_left) {
   (int num, int bits_done) = (0, 0);
   while (bits_left) {
@@ -87,19 +92,19 @@ int perform_op (int left, int right, int sign) {
   }
 }
 
-(int, int) mul_div (slice sl, int bits_left, int bits_done, slice in_msg_body);
+(int, int) mul_div (int bits_left, int bits_done, slice in_msg_body);
 
 ;; NUM ), +/*-) ; (, ( NUM ; +/*-, ( NUM
 
 ;; must start with a bracket if subseq run, which must contain at least one integer
 ;; may end with eof or )
-(int, int) brackets (slice sl, int bits_left, int bits_done, int first_run, slice in_msg_body) {
+(int, int) brackets (int bits_left, int bits_done, int first_run, slice in_msg_body) {
   if (~ first_run){
     bits_done += 8; bits_left -= 8;   ;; RM first bracket
   }
   (int ans, int processed, int sign, int hint) = (0, 0, 43, -1);
   do {
-    (int sub_calc, processed) = mul_div(get_slice(in_msg_body, bits_done, 300), bits_left, bits_done, in_msg_body);
+    (int sub_calc, processed) = mul_div(bits_left, bits_done, in_msg_body);
     bits_left -= processed - bits_done; bits_done = processed;
     ans = perform_op(ans, sub_calc, sign);
     if (bits_left >= 8) {
@@ -116,14 +121,14 @@ int perform_op (int left, int right, int sign) {
 }
 
 ;; expects at least 1 digit in slice. Proceeds execution till + or - or eof met
-(int, int) mul_div (slice sl, int bits_left, int bits_done, slice in_msg_body) {
+(int, int) mul_div (int bits_left, int bits_done, slice in_msg_body) {
   (int ans, int processed) = (-1, 0);
   int hint = get_uint(in_msg_body, bits_done, 8);
   if (hint == 40) {     ;; left_bracket after + or - sign
-    (ans, processed) = brackets(get_slice(in_msg_body, bits_done, 300), bits_left, bits_done, 0, in_msg_body);
+    (ans, processed) = brackets(bits_left, bits_done, 0, in_msg_body);
     bits_left -= processed - bits_done; bits_done = processed;
   } else {              ;; NUM after + or - sign
-    (ans, processed) = nxt_num(get_slice(in_msg_body, bits_done, 300), bits_left);
+    (ans, processed) = nxt_num(get_slice(in_msg_body, bits_done, 700), bits_left);
     bits_done += processed; bits_left -= processed;
   }
 
@@ -136,11 +141,11 @@ int perform_op (int left, int right, int sign) {
       bits_done += 8; bits_left -= 8;
       hint = get_uint(in_msg_body, bits_done, 8);
       if (hint == 40) {       ;; left_bracket after sign
-        (int sub_calc, processed) = brackets(get_slice(in_msg_body, bits_done, 300), bits_left, bits_done, 0, in_msg_body);
+        (int sub_calc, processed) = brackets(bits_left, bits_done, 0, in_msg_body);
         bits_left -= processed - bits_done; bits_done = processed;
         ans = perform_op(ans, sub_calc, sign);
       } else {                ;; NUM after sign
-        (int sub_calc, processed) = nxt_num(get_slice(in_msg_body, bits_done, 300), bits_left);
+        (int sub_calc, processed) = nxt_num(get_slice(in_msg_body, bits_done, 700), bits_left);
         bits_done += processed; bits_left -= processed;
         ans = perform_op(ans, sub_calc, sign);
       }
@@ -156,12 +161,11 @@ int perform_op (int left, int right, int sign) {
   slice sender_address = sl~load_msg_addr();
 
   in_msg_body~load_uint(32);
-  (int ans, int bits) = brackets(in_msg_body, get_total_bits(in_msg_body), 0, -1, in_msg_body);
-  (int integer_rep, bits) = tointeger(ans);
+  (int ans, int bits) = brackets(get_total_bits(in_msg_body), 0, -1, in_msg_body);
 
   cell response_message_body = begin_cell()
     .store_uint(0, 32)  ;; op_code 0, simple message with comment;
-    .store_uint(integer_rep, bits)  ;; ans in ascii hex
+    .store_slice(tointeger_slice(ans))  ;; ans in ascii hex
     .end_cell();
   
   cell response_msg = begin_cell()
@@ -177,13 +181,12 @@ int perform_op (int left, int right, int sign) {
 }
 
 (int, int) fme (int a, int b) method_id {
-  ;; cell msg = begin_cell().store_uint(16393665708263953322375373876328806561833, 136).end_cell();     ;; -3 -9 = -12
-  cell msg = begin_cell().store_uint(21049533804892064848820853960209038218164457837627546297113849145, 216).end_cell();     ;; -3 -9 = -12
+  cell msg = begin_cell().store_uint(16393665708263953322375373876328806561833, 136).end_cell();     ;; -3 -9 = -12
   slice sl = msg.begin_parse();
-  ;;~dump([get_slice(sl, 56, 80), get_slice(sl, 32, 8)]);
-  (int ans, int bits) = brackets(sl,get_total_bits(sl), 0, -1, sl);
+  (int ans, int bits) = brackets(get_total_bits(sl), 0, -1, sl);
   ~dump([911, ans]);
-  ;; (int integer_rep, _) = tointeger(ans);
-  ;; ~dump(integer_rep);
+  slice integer_rep = tointeger_slice(ans);
+  ~dump(integer_rep~load_uint(slice_bits(integer_rep)));
+  ;;~dump(115792089237316195423570985008687907853269984665640564039457584007913129639935 / 5);
   return (3, 4);
 }
