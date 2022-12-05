@@ -24,8 +24,11 @@ slice get_slice(slice sl, int start_idx, int bit_count){
   sl~skip_bits(start_idx - slice_first_idx);  ;; might be unsafe
   while (bit_count & (slice_bits(sl) > 0)){
     int to_take = min(slice_bits(sl), bit_count);
-    b~store_uint(sl~load_uint(to_take), to_take);
-    bit_count -= to_take;
+    while (to_take) {
+      int sub_take = min(to_take, 256);
+      b~store_uint(sl~load_uint(sub_take), sub_take);
+      to_take -= sub_take; bit_count -= sub_take;
+    }
     if ((bit_count > 0) & (slice_refs(sl))) {
       sl = (sl~load_ref()).begin_parse();
     }
