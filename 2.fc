@@ -149,8 +149,70 @@ cell set_body (cell msg, int msg_idx, cell msgs){
     set_data(my_data);
   }
 
+  slice sl = get_data().begin_parse(); slice sl_2 = sl;
+  int curr_idx = sl~load_uint(16) + 1;
+  int highest_score = score; int highest_score_idx = curr_idx;
+  int lowest_value = value; int lowest_value_idx = curr_idx;
+  int ct = 12; int entries = 1;   ;; TODO modify array after done
+  while (ct) {
+    int curr_score = sl~load_int(33); int curr_score_idx = sl~load_uint(16); ct -= 1;
+    if (curr_score != -1){ entries += 1; }
+    if (curr_score > highest_score) {
+      highest_score = curr_score; highest_score_idx = curr_score_idx;
+    }
+  }
+  ct = 12;
+  while (ct) {
+    int curr_value = sl~load_uint(17); int curr_value_idx = sl~load_uint(16); ct -= 1;
+    if (curr_value < lowest_value) {
+      lowest_value = curr_value; lowest_value_idx = curr_value_idx;
+    }
+  }
 
+  cell cell_tree = sl~load_ref();
 
+  if (entries == 12){   ;; drop one or two
+    
+    (cell new_data, cell to_send) = get_body(cell_tree, lowest_value_idx);    ;; TODO store new_data in refs
+    ;; set_data(new_data);
+    ;;send_cell(to_send);    ;; TODO fix mode (actually this is jyst bosy)
+    if (lowest_value_idx != highest_score_idx) {
+      (cell new_data, cell to_send) = get_body(cell_tree, lowest_value_idx);
+      ;; set_data(new_data);    ;; TODO uncomment this if cell_tree rm from g/set_body args
+      ;;send_cell(to_send);
+      (new_data, cell to_send) = get_body(cell_tree, highest_score_idx);
+      ;;send_cell(to_send);
+    }
+  }
+
+  ;; Update persistent storage
+  ct = 12; builder b = begin_cell().store_uint(curr_idx, 16).store_ref(cell_tree); int remaining = 12;    ;; confirm cell_tree right var
+  while (ct) {
+    int curr_score = sl_2~load_int(33); int curr_score_idx = sl_2~load_uint(16); ct -= 1;
+    if ((curr_score_idx != highest_score_idx) & (curr_score_idx != lowest_value_idx)){
+      b~store_int(curr_score, 33); b~store_uint(curr_score_idx, 16); remaining -= 1;
+    }
+  }
+  if ((highest_score_idx != curr_idx) & (lowest_value_idx != curr_idx)){
+    b~store_int(score, 33); b~store_uint(curr_idx, 16); remaining -= 1;
+  }
+  while (remaining) {
+    b~store_int(-1, 33); b~store_uint(0, 16); remaining -= 1;
+  }
+  ct = 12; remaining = 12;
+  while (ct){
+    int curr_value = sl_2~load_uint(17); int curr_value_idx = sl_2~load_uint(16); ct -= 1;
+    if ((curr_value_idx != highest_score_idx) & (curr_value_idx != lowest_value_idx)) {
+      b~store_uint(curr_value, 17); b~store_uint(curr_value_idx, 16); remaining -= 1;
+    }
+  }
+  if ((highest_score_idx != curr_idx) & (lowest_value_idx != curr_idx)){
+    b~store_int(value, 17); b~store_uint(curr_idx, 16); remaining -= 1;
+  }
+  while (remaining) {
+    b~store_uint(131071, 17); b~store_uint(0, 16); remaining -= 1;
+  }
+  set_data(b.end_cell());
 }
 
 (int, int) fme (int a, int b) method_id {
