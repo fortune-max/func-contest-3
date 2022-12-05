@@ -43,7 +43,7 @@
       b~store_uint(curr_id, 16);
     }
   }
-  ct = (pos - 1) / 3;
+  ct = (pos - 1) / 4;
   while (ct) {
     b.store_ref(sl~load_ref()); ct -= 1;
   }
@@ -79,7 +79,7 @@ cell set_body (cell msg, int msg_idx, cell msgs){
       b~store_uint(curr_id, 16);
     }
   }
-  ct = (pos - 1) / 3;
+  ct = (pos - 1) / 4;
   while (ct) {
     b.store_ref(sl~load_ref()); ct -= 1;
   }
@@ -106,20 +106,36 @@ cell set_body (cell msg, int msg_idx, cell msgs){
 ;; testable
 () recv_internal (slice in_msg_body) {
   (int score, int value, cell msg) = (in_msg_body~load_uint(32), in_msg_body~load_coins(), in_msg_body~load_ref());
-  ;; Add code here
 
   ;; first run
-  if (slice_bits(get_data().begin_parse())){
-    tuple score_list = empty_tuple();   ;; interested in highest
-    tuple value_list = empty_tuple();   ;; interested in lowest
-    tuple cell_list = empty_tuple();
-    int times = 12; int count = 12;
-    while (times) {
-      score_list~tpush(pair(- times, times));
-      value_list~tpush(pair(65537 + times, times));
-      cell_list~tpush(pair(begin_cell().end_cell(), times));
-      times -= 1;
-    }
+  if (slice_bits(get_data().begin_parse()) == 0){
+    cell cell_tree = begin_cell()
+    .store_uint(0xffffffffffffffffffffffffffffffffffffffffffffffff, 192)
+    .store_ref(
+      begin_cell()
+        .store_ref(begin_cell().end_cell())
+        .store_ref(begin_cell().end_cell())
+        .store_ref(begin_cell().end_cell())
+        .store_ref(begin_cell().end_cell())
+        .end_cell()
+    )
+    .store_ref(
+      begin_cell()
+        .store_ref(begin_cell().end_cell())
+        .store_ref(begin_cell().end_cell())
+        .store_ref(begin_cell().end_cell())
+        .store_ref(begin_cell().end_cell())
+        .end_cell()
+    )
+    .store_ref(
+      begin_cell()
+        .store_ref(begin_cell().end_cell())
+        .store_ref(begin_cell().end_cell())
+        .store_ref(begin_cell().end_cell())
+        .store_ref(begin_cell().end_cell())
+        .end_cell()
+    )
+    .end_cell();
   }
   ;;   ;; persistent storage schema
     
@@ -129,22 +145,41 @@ cell set_body (cell msg, int msg_idx, cell msgs){
 }
 
 (int, int) fme (int a, int b) method_id {
-  ~dump(23);
-  cell j = begin_cell()
-  .store_uint(0x1234, 16)
-  .store_ref(begin_cell().store_uint(0x6789, 16).end_cell())
-  .store_uint(0x1011, 16)
-  .store_ref(begin_cell().store_uint(0x1213, 16).end_cell())
-  .store_uint(0x1415, 16)
-  .store_ref(begin_cell().store_uint(0x1617, 16).end_cell())
-  .end_cell();
-
-  slice sl = j.begin_parse();
-  cell a = sl~load_ref();
-  ~dump(a.begin_parse());
-  cell a = sl~load_ref();
-  ~dump(a.begin_parse());
-  cell a = sl~load_ref();
-  ~dump(a.begin_parse());
+  cell cell_tree = begin_cell()
+    .store_uint(0xffffffffffffffff, 64)
+    .store_uint(0xffffffff1fffffff, 64)
+    .store_uint(0xffffffffffffffff, 64)
+    .store_ref(
+      begin_cell()
+        .store_ref(begin_cell().store_uint(0x1001, 16).end_cell())
+        .store_ref(begin_cell().store_uint(0x1002, 16).end_cell())
+        .store_ref(begin_cell().store_uint(0x1003, 16).end_cell())
+        .store_ref(begin_cell().store_uint(0x1004, 16).end_cell())
+        .end_cell()
+    )
+    .store_ref(
+      begin_cell()
+        .store_ref(begin_cell().store_uint(0x1005, 16).end_cell())
+        .store_ref(begin_cell().store_uint(0x1006, 16).end_cell())
+        .store_ref(begin_cell().store_uint(0x1007, 16).end_cell())
+        .store_ref(begin_cell().store_uint(0x1008, 16).end_cell())
+        .end_cell()
+    )
+    .store_ref(
+      begin_cell()
+        .store_ref(begin_cell().store_uint(0x1009, 16).end_cell())
+        .store_ref(begin_cell().store_uint(0x1010, 16).end_cell())
+        .store_ref(begin_cell().store_uint(0x1011, 16).end_cell())
+        .store_ref(begin_cell().store_uint(0x1012, 16).end_cell())
+        .end_cell()
+    )
+    .end_cell();
+  ;; slice sl = cell_tree.begin_parse();
+  ;; sl~load_ref(); sl~load_ref();
+  ;; cell first_parent = sl~load_ref();
+  ;; slice sl_2 = first_parent.begin_parse();
+  ;; ~dump([121, (sl_2~load_ref()).begin_parse(), (sl_2~load_ref()).begin_parse(), (sl_2~load_ref()).begin_parse(), (sl_2~load_ref()).begin_parse()]);
+  (_, cell interested) = get_body(cell_tree, 0x1fff);
+  ~dump([12, interested.begin_parse()]);
   return (3, 4);
 }
