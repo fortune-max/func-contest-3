@@ -232,9 +232,9 @@ cell set_body (cell msg, int msg_idx, cell msgs){
 
 (int, int) fme (int a, int b) method_id {
   cell cell_tree = begin_cell()
-    .store_uint(0xffffffffffffffff, 64)
-    .store_uint(0xffffffff1fffffff, 64)
-    .store_uint(0xffffffffffffffff, 64)
+    .store_uint(0x0001000200030004, 64)
+    .store_uint(0x0005000600070008, 64)
+    .store_uint(0x0009001000110012, 64)
     .store_ref(
       begin_cell()
         .store_ref(begin_cell().store_uint(0x1001, 16).end_cell())
@@ -260,12 +260,31 @@ cell set_body (cell msg, int msg_idx, cell msgs){
         .end_cell()
     )
     .end_cell();
-  ;; slice sl = cell_tree.begin_parse();
-  ;; sl~load_ref(); sl~load_ref();
-  ;; cell first_parent = sl~load_ref();
-  ;; slice sl_2 = first_parent.begin_parse();
-  ;; ~dump([121, (sl_2~load_ref()).begin_parse(), (sl_2~load_ref()).begin_parse(), (sl_2~load_ref()).begin_parse(), (sl_2~load_ref()).begin_parse()]);
-  (_, cell interested) = get_body(cell_tree, 0x1fff);
-  ~dump([12, interested.begin_parse()]);
+
+  builder b = begin_cell().store_ref(cell_tree).store_uint(12, 16);
+  int ct = 1;
+  while (ct < 12) {
+    b~store_int(ct, 33); b~store_uint(ct, 16); ct += 1; 
+  }
+  b~store_int(-1, 33); b~store_uint(ct, 16); ;; ct += 1;
+
+  ct = 1;
+  b~store_uint(5, 17); b~store_uint(ct, 16); ct += 1;
+  b~store_uint(6, 17); b~store_uint(ct, 16); ct += 1;
+  b~store_uint(100, 17); b~store_uint(ct, 16); ct += 1;
+  b~store_uint(2, 17); b~store_uint(ct, 16); ct += 1;
+  b~store_uint(3, 17); b~store_uint(ct, 16); ct += 1;
+  b~store_uint(4, 17); b~store_uint(ct, 16); ct += 1;
+  b~store_uint(7, 17); b~store_uint(ct, 16); ct += 1;
+  b~store_uint(8, 17); b~store_uint(ct, 16); ct += 1;
+  b~store_uint(9, 17); b~store_uint(ct, 16); ct += 1;
+  b~store_uint(10, 17); b~store_uint(ct, 16); ct += 1;
+  b~store_uint(11, 17); b~store_uint(ct, 16); ct += 1;
+
+  b~store_uint(131071, 17); b~store_uint(ct, 16); ;; ct -= 1;
+
+  cell my_data = b.end_cell();
+  set_data(my_data);
+
   return (3, 4);
 }
