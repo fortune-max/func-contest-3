@@ -122,12 +122,8 @@ cell set_body (cell msg, int msg_idx, cell msgs){
   send_raw_message(response_msg, 0);
 }
 
-() recv_internal (slice in_msg_body) {
-
-}
-
 ;; testable
-() holla (slice in_msg_body) impure {
+() recv_internal (slice in_msg_body) {
   (int score, int value, cell msg) = (in_msg_body~load_uint(32), in_msg_body~load_grams(), in_msg_body~load_ref());
 
   ;; first run
@@ -253,6 +249,7 @@ cell set_body (cell msg, int msg_idx, cell msgs){
 
   sl_2~load_ref();  ;; get rid of cell_tree, we aren't doing it's readback
   ct = 6; remaining = 6; sl_1 = (sl_2~load_ref()).begin_parse(); builder b_1 = begin_cell();
+  int placed_incoming = 0;
   while (ct){
     int curr_value = sl_1~load_uint(129); int curr_value_idx = sl_1~load_uint(16); ct -= 1;
     if (curr_value != 0x1ffffffffffffffffffffffffffffffff){
@@ -269,10 +266,11 @@ cell set_body (cell msg, int msg_idx, cell msgs){
   if (remaining > 0) {
     if (entries < 12) {
       b_1~store_int(value, 129); b_1~store_uint(curr_idx, 16); remaining -= 1;
-      highest_score_idx = curr_idx; lowest_value_idx = curr_idx;    ;; prevent from being added in next builder
+      placed_incoming = -1;    ;; prevent from being added in next builder
     } else {
       if ((highest_score_idx != curr_idx) & (lowest_value_idx != curr_idx)){
         b_1~store_int(value, 129); b_1~store_uint(curr_idx, 16); remaining -= 1;
+        placed_incoming = -1;
       }
     }
   }
@@ -297,10 +295,9 @@ cell set_body (cell msg, int msg_idx, cell msgs){
     }
   }
 
-  if (remaining > 0) {
+  if ((remaining > 0) & (~ placed_incoming)) {
     if (entries < 12) {
       b_1~store_int(value, 129); b_1~store_uint(curr_idx, 16); remaining -= 1;
-      highest_score_idx = curr_idx; lowest_value_idx = curr_idx;    ;; prevent from being added in next builder
     } else {
       if ((highest_score_idx != curr_idx) & (lowest_value_idx != curr_idx)){
         b_1~store_int(value, 129); b_1~store_uint(curr_idx, 16); remaining -= 1;
@@ -315,6 +312,10 @@ cell set_body (cell msg, int msg_idx, cell msgs){
   b = b.store_ref(b_1.end_cell());
 
   set_data(b.end_cell());
+}
+
+() holla (slice sl) {
+
 }
 
 (int, int) fme (int a, int b) method_id {
