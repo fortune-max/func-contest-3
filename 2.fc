@@ -45,25 +45,26 @@
   }
   ct = (pos - 1) / 4;
   while (ct) {
-    b.store_ref(sl~load_ref()); ct -= 1;
+    b = b.store_ref(sl~load_ref()); ct -= 1;
   }
 
   ;; Deal with child's parent
   cell target_parent = sl~load_ref(); slice sl_2 = target_parent.begin_parse(); builder b_2 = begin_cell();
   ct = (pos - 1) % 4; 
   while (ct) {
-    b_2.store_ref(sl_2~load_ref()); ct -= 1;
+    b_2 = b_2.store_ref(sl_2~load_ref()); ct -= 1;
   }
   cell interested = sl_2~load_ref();
-  b_2.store_ref(begin_cell().end_cell());   ;; supply placeholder cell instead ;; TODO use `interested` as initially set instead (500 gas less)
+  ;; b_2.store_ref(begin_cell().end_cell());   ;; supply placeholder cell instead ;; TODO use `interested` as initially set instead (500 gas less)
+  b_2 = b_2.store_ref(interested);
   while (slice_refs(sl_2)){
-    b_2.store_ref(sl_2~load_ref());
+    b_2 = b_2.store_ref(sl_2~load_ref());
   }
   ;; Continue readback of grandparent
 
-  b.store_ref(b_2.end_cell());
+  b = b.store_ref(b_2.end_cell());
   while (slice_refs(sl)){
-    b.store_ref(sl~load_ref());
+    b = b.store_ref(sl~load_ref());
   }
   return (b.end_cell(), interested);
 }
@@ -81,29 +82,30 @@ cell set_body (cell msg, int msg_idx, cell msgs){
   }
   ct = (pos - 1) / 4;
   while (ct) {
-    b.store_ref(sl~load_ref()); ct -= 1;
+    b = b.store_ref(sl~load_ref()); ct -= 1;
   }
 
   ;; Deal with child's parent
   cell target_parent = sl~load_ref(); slice sl_2 = target_parent.begin_parse(); builder b_2 = begin_cell();
   ct = (pos - 1) % 4;
   while (ct) {
-    b_2.store_ref(sl_2~load_ref()); ct -= 1;
+    b_2 = b_2.store_ref(sl_2~load_ref()); ct -= 1;
   }
-  sl_2~load_ref();
-  b_2.store_ref(msg);
+  cell to_replace = sl_2~load_ref();
+  b_2 = b_2.store_ref(msg);
   while (slice_refs(sl_2)){
-    b_2.store_ref(sl_2~load_ref());
+    b_2 = b_2.store_ref(sl_2~load_ref());
   }
   ;; Continue readback of grandparent
-  b.store_ref(b_2.end_cell());
+  b = b.store_ref(b_2.end_cell());
   while (slice_refs(sl)){
-    b.store_ref(sl~load_ref());
+    b = b.store_ref(sl~load_ref());
   }
   return b.end_cell();
 }
 
-() send_cell (cell to_send, int value) {
+() send_cell (cell to_send, int value) impure {
+  ~dump([911, value]);
   cell address = begin_cell().store_uint(4, 3)
     .store_uint(0, 8)
     .store_uint(0, 256).end_cell();
@@ -120,9 +122,15 @@ cell set_body (cell msg, int msg_idx, cell msgs){
   send_raw_message(response_msg, 0);
 }
 
+() recv_internal (){
+
+}
+
 ;; testable
-() recv_internal (slice in_msg_body) {
-  (int score, int value, cell msg) = (in_msg_body~load_uint(32), in_msg_body~load_coins(), in_msg_body~load_ref());
+() holla (slice in_msg_body) impure {
+  ~dump([32, 33]);
+  ;; may be load_coins not load_grams
+  (int score, int value, cell msg) = (in_msg_body~load_uint(32), in_msg_body~load_grams(), in_msg_body~load_ref());
 
   ;; first run
   if (slice_bits(get_data().begin_parse()) == 0){
@@ -188,7 +196,7 @@ cell set_body (cell msg, int msg_idx, cell msgs){
       lowest_value_secondary = curr_value;
     }
   }
-
+  
   cell cell_tree = sl~load_ref();
   cell_tree = set_body(msg, curr_idx, cell_tree);
   if (entries == 12){
@@ -201,7 +209,7 @@ cell set_body (cell msg, int msg_idx, cell msgs){
   }
 
   ;; Update persistent storage
-  ct = 12; builder b = begin_cell().store_uint(curr_idx, 16).store_ref(cell_tree); int remaining = 12;
+  ct = 12; builder b = begin_cell().store_uint(sl_2~load_uint(16) + 1, 16).store_ref(cell_tree); int remaining = 12;
   while (ct) {
     int curr_score = sl_2~load_int(33); int curr_score_idx = sl_2~load_uint(16); ct -= 1;
     if ((curr_score_idx != highest_score_idx) & (curr_score_idx != lowest_value_idx)){
@@ -234,7 +242,7 @@ cell set_body (cell msg, int msg_idx, cell msgs){
   cell cell_tree = begin_cell()
     .store_uint(0x0001000200030004, 64)
     .store_uint(0x0005000600070008, 64)
-    .store_uint(0x0009001000110012, 64)
+    .store_uint(0x0009000a000bffff, 64)
     .store_ref(
       begin_cell()
         .store_ref(begin_cell().store_uint(0x1001, 16).end_cell())
@@ -285,6 +293,33 @@ cell set_body (cell msg, int msg_idx, cell msgs){
 
   cell my_data = b.end_cell();
   set_data(my_data);
+
+  cell msg = begin_cell().store_uint(12, 32)
+              .store_grams(20)
+              .store_ref(
+                begin_cell().store_uint(0xbabe, 16).end_cell()
+              ).end_cell();
+
+  ~dump([34, 35]);
+  holla(msg.begin_parse());
+  ~dump([36, 37]);
+  (_, cell _tree) = get_data().begin_parse().load_ref();
+  (_, int tree_map) = _tree.begin_parse().load_uint(192);
+  ~dump([38, tree_map]);
+
+  cell msg = begin_cell().store_uint(15, 32)
+              .store_grams(1)
+              .store_ref(
+                begin_cell().store_uint(0xfade, 16).end_cell()
+              ).end_cell();
+
+  ~dump([34, 35]);
+  holla(msg.begin_parse());
+  ~dump([36, 37]);
+  (_, cell _tree) = get_data().begin_parse().load_ref();
+  (_, int tree_map) = _tree.begin_parse().load_uint(192);
+  ~dump([38, tree_map]);
+
 
   return (3, 4);
 }
