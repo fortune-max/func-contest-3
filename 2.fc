@@ -105,7 +105,7 @@ cell set_body (cell msg, int msg_idx, cell msgs){
 }
 
 () send_cell (cell to_send, int value) impure {
-  ;;~dump([911, value])
+  ;;~dump([911, value]);
   cell address = begin_cell().store_uint(4, 3)
     .store_uint(0, 8)
     .store_uint(0, 256).end_cell();
@@ -122,8 +122,12 @@ cell set_body (cell msg, int msg_idx, cell msgs){
   send_raw_message(response_msg, 0);
 }
 
-;; testable
 () recv_internal (slice in_msg_body) {
+
+}
+
+;; testable
+() holla (slice in_msg_body) impure {
   (int score, int value, cell msg) = (in_msg_body~load_uint(32), in_msg_body~load_grams(), in_msg_body~load_ref());
 
   ;; first run
@@ -247,9 +251,10 @@ cell set_body (cell msg, int msg_idx, cell msgs){
     b~store_int(-1, 33); b~store_uint(0, 16); remaining -= 1;
   }
 
+  sl_2~load_ref();  ;; get rid of cell_tree, we aren't doing it's readback
   ct = 6; remaining = 6; sl_1 = (sl_2~load_ref()).begin_parse(); builder b_1 = begin_cell();
   while (ct){
-    int curr_value = sl_1~load_uint(129); int curr_value_idx = sl_2~load_uint(16); ct -= 1;
+    int curr_value = sl_1~load_uint(129); int curr_value_idx = sl_1~load_uint(16); ct -= 1;
     if (curr_value != 0x1ffffffffffffffffffffffffffffffff){
       if (entries < 12){
         b_1~store_uint(curr_value, 129); b_1~store_uint(curr_value_idx, 16); remaining -= 1;
@@ -278,7 +283,7 @@ cell set_body (cell msg, int msg_idx, cell msgs){
 
   ct = 6; remaining = 6; sl_1 = (sl_2~load_ref()).begin_parse(); b_1 = begin_cell();
   while (ct){
-    int curr_value = sl_1~load_uint(129); int curr_value_idx = sl_2~load_uint(16); ct -= 1;
+    int curr_value = sl_1~load_uint(129); int curr_value_idx = sl_1~load_uint(16); ct -= 1;
     if (curr_value != 0x1ffffffffffffffffffffffffffffffff){
       if (entries < 12){
         b_1~store_uint(curr_value, 129); b_1~store_uint(curr_value_idx, 16); remaining -= 1;
@@ -363,17 +368,18 @@ cell set_body (cell msg, int msg_idx, cell msgs){
   ;; cell my_data = b.end_cell();
   ;; set_data(my_data);
 
-  ;; cell msg = begin_cell().store_uint(12, 32)
-  ;;             .store_grams(20)
-  ;;             .store_ref(
-  ;;               begin_cell().store_uint(0xbabe, 16).end_cell()
-  ;;             ).end_cell();
+  cell msg = begin_cell().store_uint(1, 32)
+              .store_grams(5)
+              .store_ref(
+                begin_cell().store_uint(0xbabe, 16).end_cell()
+              ).end_cell();
+  ~dump([34, 35]);
+  holla(msg.begin_parse());
+  ~dump([36, 37]);
+  (_, cell _tree) = get_data().begin_parse().load_ref();
+  (_, int tree_map) = _tree.begin_parse().load_uint(192);
+  ~dump([38, tree_map]);
 
-  ;; ~dump([34, 35]);
-  ;; holla(msg.begin_parse());
-  ;; ~dump([36, 37]);
-  ;; (_, cell _tree) = get_data().begin_parse().load_ref();
-  ;; (_, int tree_map) = _tree.begin_parse().load_uint(192);
   ;; slice sl = get_data().begin_parse();
   ;; int last_idx = sl~load_uint(16);
   ;; int ct = 12;
@@ -384,7 +390,7 @@ cell set_body (cell msg, int msg_idx, cell msgs){
   ;; while (ct) {
   ;;   ~dump([41, sl~load_uint(17), sl~load_uint(16)]); ct -= 1;
   ;; }
-  ;; ~dump([38, tree_map]);
+  
 
   ;; cell msg = begin_cell().store_uint(15, 32)
   ;;             .store_grams(1)
