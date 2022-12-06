@@ -37,7 +37,7 @@
 
   while (slice_bits(sl)){
     int curr_id = sl~load_uint(16); ct += 1;
-    if (curr_id == msg_idx) {
+    if ((curr_id == msg_idx) & (pos == -1)) {
       b~store_uint(65535, 16); pos = ct;
     } else {
       b~store_uint(curr_id, 16);
@@ -74,7 +74,7 @@ cell set_body (cell msg, int msg_idx, cell msgs){
   slice sl = msgs.begin_parse(); builder b = begin_cell(); int ct = 0; int pos = -1;
   while (slice_bits(sl)){
     int curr_id = sl~load_uint(16); ct += 1;
-    if (curr_id == 65535) {
+    if ((curr_id == 65535) & (pos == -1)) {
       b~store_uint(msg_idx, 16); pos = ct;
     } else {
       b~store_uint(curr_id, 16);
@@ -129,7 +129,6 @@ cell set_body (cell msg, int msg_idx, cell msgs){
 ;; testable
 () holla (slice in_msg_body) impure {
   ~dump([32, 33]);
-  ;; may be load_coins not load_grams
   (int score, int value, cell msg) = (in_msg_body~load_uint(32), in_msg_body~load_grams(), in_msg_body~load_ref());
 
   ;; first run
@@ -196,7 +195,7 @@ cell set_body (cell msg, int msg_idx, cell msgs){
       lowest_value_secondary = curr_value;
     }
   }
-  
+
   cell cell_tree = sl~load_ref();
   cell_tree = set_body(msg, curr_idx, cell_tree);
   if (entries == 12){
@@ -212,26 +211,51 @@ cell set_body (cell msg, int msg_idx, cell msgs){
   ct = 12; builder b = begin_cell().store_uint(sl_2~load_uint(16) + 1, 16).store_ref(cell_tree); int remaining = 12;
   while (ct) {
     int curr_score = sl_2~load_int(33); int curr_score_idx = sl_2~load_uint(16); ct -= 1;
-    if ((curr_score_idx != highest_score_idx) & (curr_score_idx != lowest_value_idx)){
-      b~store_int(curr_score, 33); b~store_uint(curr_score_idx, 16); remaining -= 1;
+    if (curr_score != -1){    ;; not default value
+      if (entries < 12){
+        b~store_int(curr_score, 33); b~store_uint(curr_score_idx, 16); remaining -= 1;
+      } else {
+        if ((curr_score_idx != highest_score_idx) & (curr_score_idx != lowest_value_idx)){
+          b~store_int(curr_score, 33); b~store_uint(curr_score_idx, 16); remaining -= 1;
+        }
+      }
     }
   }
-  if ((highest_score_idx != curr_idx) & (lowest_value_idx != curr_idx)){
+
+  if (entries < 12) {
     b~store_int(score, 33); b~store_uint(curr_idx, 16); remaining -= 1;
+  } else {
+    if ((highest_score_idx != curr_idx) & (lowest_value_idx != curr_idx)){
+      b~store_int(score, 33); b~store_uint(curr_idx, 16); remaining -= 1;
+    }
   }
+  
   while (remaining) {
     b~store_int(-1, 33); b~store_uint(0, 16); remaining -= 1;
   }
+
   ct = 12; remaining = 12;
   while (ct){
     int curr_value = sl_2~load_uint(17); int curr_value_idx = sl_2~load_uint(16); ct -= 1;
-    if ((curr_value_idx != highest_score_idx) & (curr_value_idx != lowest_value_idx)) {
-      b~store_uint(curr_value, 17); b~store_uint(curr_value_idx, 16); remaining -= 1;
+    if (curr_value != 131071){
+      if (entries < 12){
+        b~store_uint(curr_value, 17); b~store_uint(curr_value_idx, 16); remaining -= 1;
+      } else {
+        if ((curr_value_idx != highest_score_idx) & (curr_value_idx != lowest_value_idx)) {
+          b~store_uint(curr_value, 17); b~store_uint(curr_value_idx, 16); remaining -= 1;
+        }
+      }
     }
   }
-  if ((highest_score_idx != curr_idx) & (lowest_value_idx != curr_idx)){
+
+  if (entries < 12) {
     b~store_int(value, 17); b~store_uint(curr_idx, 16); remaining -= 1;
+  } else {
+    if ((highest_score_idx != curr_idx) & (lowest_value_idx != curr_idx)){
+      b~store_int(value, 17); b~store_uint(curr_idx, 16); remaining -= 1;
+    }
   }
+  
   while (remaining) {
     b~store_uint(131071, 17); b~store_uint(0, 16); remaining -= 1;
   }
@@ -305,6 +329,16 @@ cell set_body (cell msg, int msg_idx, cell msgs){
   ~dump([36, 37]);
   (_, cell _tree) = get_data().begin_parse().load_ref();
   (_, int tree_map) = _tree.begin_parse().load_uint(192);
+  slice sl = get_data().begin_parse();
+  int last_idx = sl~load_uint(16);
+  int ct = 12;
+  while (ct) {
+    ~dump([40, sl~load_int(33), sl~load_uint(16)]); ct -= 1;
+  }
+  ct = 12;
+  while (ct) {
+    ~dump([41, sl~load_uint(17), sl~load_uint(16)]); ct -= 1;
+  }
   ~dump([38, tree_map]);
 
   cell msg = begin_cell().store_uint(15, 32)
@@ -318,8 +352,63 @@ cell set_body (cell msg, int msg_idx, cell msgs){
   ~dump([36, 37]);
   (_, cell _tree) = get_data().begin_parse().load_ref();
   (_, int tree_map) = _tree.begin_parse().load_uint(192);
+  slice sl = get_data().begin_parse();
+  int last_idx = sl~load_uint(16);
+  int ct = 12;
+  while (ct) {
+    ~dump([40, sl~load_int(33), sl~load_uint(16)]); ct -= 1;
+  }
+  ct = 12;
+  while (ct) {
+    ~dump([41, sl~load_uint(17), sl~load_uint(16)]); ct -= 1;
+  }
   ~dump([38, tree_map]);
 
+  cell msg = begin_cell().store_uint(13, 32)
+              .store_grams(13)
+              .store_ref(
+                begin_cell().store_uint(0xb00b, 16).end_cell()
+              ).end_cell();
+
+  ~dump([34, 35]);
+  holla(msg.begin_parse());
+  ~dump([36, 37]);
+  (_, cell _tree) = get_data().begin_parse().load_ref();
+  (_, int tree_map) = _tree.begin_parse().load_uint(192);
+  slice sl = get_data().begin_parse();
+  int last_idx = sl~load_uint(16);
+  int ct = 12;
+  while (ct) {
+    ~dump([40, sl~load_int(33), sl~load_uint(16)]); ct -= 1;
+  }
+  ct = 12;
+  while (ct) {
+    ~dump([41, sl~load_uint(17), sl~load_uint(16)]); ct -= 1;
+  }
+  ~dump([38, tree_map]);
+
+  cell msg = begin_cell().store_uint(14, 32)
+              .store_grams(14)
+              .store_ref(
+                begin_cell().store_uint(0xbeb0, 16).end_cell()
+              ).end_cell();
+
+  ~dump([34, 35]);
+  holla(msg.begin_parse());
+  ~dump([36, 37]);
+  (_, cell _tree) = get_data().begin_parse().load_ref();
+  (_, int tree_map) = _tree.begin_parse().load_uint(192);
+  slice sl = get_data().begin_parse();
+  int last_idx = sl~load_uint(16);
+  int ct = 12;
+  while (ct) {
+    ~dump([40, sl~load_int(33), sl~load_uint(16)]); ct -= 1;
+  }
+  ct = 12;
+  while (ct) {
+    ~dump([41, sl~load_uint(17), sl~load_uint(16)]); ct -= 1;
+  }
+  ~dump([38, tree_map]);
 
   return (3, 4);
 }
