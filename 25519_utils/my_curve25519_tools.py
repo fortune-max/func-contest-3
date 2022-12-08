@@ -1,3 +1,6 @@
+A = 486662
+MOD = 57896044618658097711785492504343953926634992332820282019728792003956564819949
+
 def is_on_curve(x, y):
   A = 486662
   MOD = 57896044618658097711785492504343953926634992332820282019728792003956564819949
@@ -106,3 +109,15 @@ def get_z_from_x(x):
 def get_y_from_x(x):
     MOD = 57896044618658097711785492504343953926634992332820282019728792003956564819949
     return modular_sqrt(get_z_from_x(x), MOD)
+
+def expmod(b,e,m):
+  if e == 0: return 1
+  t = expmod(b,e/2,m)**2 % m
+  if e & 1: t = (t*b) % m
+  return t
+
+def inv(x):
+  return expmod(x, MOD-2, MOD)
+
+def inv_2(x):
+  return pow(x, MOD-2, MOD)
