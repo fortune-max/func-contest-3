@@ -69,13 +69,16 @@ slice skip_bits_custom(slice sl, int bit_shift_global) inline {
 }
 
 ;; expects at least 1 digit (8-bit) in slice
-(int, int) nxt_num(slice sl, int bits_left_local, int bits_left_global) inline {
+(int, int, slice) nxt_num(slice sl, int bits_left_local, int bits_left_global) inline {
   (int num, int bits_done) = (0, 0);
+  slice sl_prev_byte = sl;
   while (bits_left_global) {
     int hint = -1;
     if (bits_left_local >= 8){
+      sl_prev_byte = sl;
       hint = sl~load_uint(8);
     } else {
+      sl_prev_byte = sl;
       (slice tmp_sl, sl) = load_bits_custom(sl, 8);
       hint = tmp_sl~load_uint(8);
       bits_left_local = slice_bits(sl);
@@ -84,10 +87,10 @@ slice skip_bits_custom(slice sl, int bit_shift_global) inline {
       bits_done += 8; bits_left_local -= 8; bits_left_global -= 8;
       num = 10 * num + (hint - 48);
     } else {
-      bits_left_global = 0;
+      bits_left_global = 0; sl = sl_prev_byte;
     }
   }
-  return (num, bits_done);
+  return (num, bits_done, sl);
 }
 
 int perform_op (int left, int right, int sign) {  ;; warning DO NOT inline this
@@ -102,19 +105,19 @@ int perform_op (int left, int right, int sign) {  ;; warning DO NOT inline this
   }
 }
 
-(int, int) mul_div (slice sl, int bits_left_local, int bits_left_global);
+(int, int, slice) mul_div (slice sl, int bits_left_local, int bits_left_global);
 
 ;; NUM ), +/*-) ; (, ( NUM ; +/*-, ( NUM
 
 ;; must start with a bracket if subseq run, which must contain at least one integer
 ;; may end with eof or )
-(int, int) brackets (slice sl, int bits_left_local, int bits_left_global, int first_run) inline {
+(int, int, slice) brackets (slice sl, int bits_left_local, int bits_left_global, int first_run) inline {
   int bits_done = 0;
   if (~ first_run){ ;; RM first bracket
     if (bits_left_local >= 8){
       sl~skip_bits(8); bits_done += 8; bits_left_local -= 8; bits_left_global -= 8;
     } else {
-      (_, sl) = load_bits_custom(sl, 8);
+      sl = skip_bits_custom(sl, 8);
       bits_done += 8; bits_left_local = slice_bits(sl); bits_left_global -= 8;
     }
   }
@@ -122,11 +125,10 @@ int perform_op (int left, int right, int sign) {  ;; warning DO NOT inline this
   (int ans, int processed, int sign, int hint) = (0, 0, 43, -1);
   slice new_slice = sl;    ;; placeholder to set scope
   do {
-    (int sub_calc, processed) = mul_div(sl, bits_left_local, bits_left_global);
+    (int sub_calc, processed, sl) = mul_div(sl, bits_left_local, bits_left_global);
     if (bits_left_local >= processed){
-      sl~skip_bits(processed); bits_done += processed; bits_left_local -= processed; bits_left_global -= processed;
+      bits_done += processed; bits_left_local -= processed; bits_left_global -= processed;
     } else {
-      sl = skip_bits_custom(sl, processed);
       bits_done += processed; bits_left_local = slice_bits(sl); bits_left_global -= processed;
     }
     ans = perform_op(ans, sub_calc, sign);
@@ -139,6 +141,11 @@ int perform_op (int left, int right, int sign) {  ;; warning DO NOT inline this
       }
       if (hint == 41) {   ;; met end of bracket
         bits_done += 8; bits_left_global = 0;
+        if (bits_left_local >= 8){
+          sl~skip_bits(8);
+        } else {
+          sl = skip_bits_custom(sl, 8);
+        }
       } else {
         sign = hint;
         if (bits_left_local >= 8){
@@ -149,11 +156,11 @@ int perform_op (int left, int right, int sign) {  ;; warning DO NOT inline this
       }
     }
   } until (bits_left_global == 0);
-  return (ans, bits_done);
+  return (ans, bits_done, sl);
 }
 
 ;; expects at least 1 digit in slice. Proceeds execution till + or - or eof met
-(int, int) mul_div (slice sl, int bits_left_local, int bits_left_global) inline {
+(int, int, slice) mul_div (slice sl, int bits_left_local, int bits_left_global) inline {
   (int ans, int processed, int bits_done) = (-1, 0, 0);
   int hint = -1; slice new_slice = sl;    ;; placeholder to set scope
   if (bits_left_local >= 8){
@@ -163,19 +170,17 @@ int perform_op (int left, int right, int sign) {  ;; warning DO NOT inline this
     hint = tmp_slice~load_uint(8);
   }
   if (hint == 40) { ;; left_bracket after + or - sign
-    (ans, processed) = brackets(sl, bits_left_local, bits_left_global, 0);
+    (ans, processed, sl) = brackets(sl, bits_left_local, bits_left_global, 0);
     if (bits_left_local >= processed){
-      sl~skip_bits(processed); bits_done += processed; bits_left_local -= processed; bits_left_global -= processed;
+      bits_done += processed; bits_left_local -= processed; bits_left_global -= processed;
     } else {
-      sl = skip_bits_custom(sl, processed);
       bits_done += processed; bits_left_local = slice_bits(sl); bits_left_global -= processed;
     }
   } else {  ;; NUM after + or - sign
-    (ans, processed) = nxt_num(sl, bits_left_local, bits_left_global);
+    (ans, processed, sl) = nxt_num(sl, bits_left_local, bits_left_global);
     if (bits_left_local >= processed){
-      sl~skip_bits(processed); bits_done += processed; bits_left_local -= processed; bits_left_global -= processed;
+      bits_done += processed; bits_left_local -= processed; bits_left_global -= processed;
     } else {
-      sl = skip_bits_custom(sl, processed);
       bits_done += processed; bits_left_local = slice_bits(sl); bits_left_global -= processed;
     }
   }
@@ -202,27 +207,25 @@ int perform_op (int left, int right, int sign) {  ;; warning DO NOT inline this
         hint = tmp_slice~load_uint(8);
       }
       if (hint == 40) {     ;; left_bracket after sign
-        (int sub_calc, processed) = brackets(sl, bits_left_local, bits_left_global, 0);
+        (int sub_calc, processed, sl) = brackets(sl, bits_left_local, bits_left_global, 0);
         if (bits_left_local >= processed){
-          sl~skip_bits(processed); bits_done += processed; bits_left_local -= processed; bits_left_global -= processed;
+          bits_done += processed; bits_left_local -= processed; bits_left_global -= processed;
         } else {
-          sl = skip_bits_custom(sl, processed);
           bits_done += processed; bits_left_local = slice_bits(sl); bits_left_global -= processed;
         }
         ans = perform_op(ans, sub_calc, sign);
       } else {        ;; NUM after sign
-        (int sub_calc, processed) = nxt_num(sl, bits_left_local, bits_left_global);
+        (int sub_calc, processed, sl) = nxt_num(sl, bits_left_local, bits_left_global);
         if (bits_left_local >= processed){
-          sl~skip_bits(processed); bits_done += processed; bits_left_local -= processed; bits_left_global -= processed;
+          bits_done += processed; bits_left_local -= processed; bits_left_global -= processed;
         } else {
-          sl = skip_bits_custom(sl, processed);
           bits_done += processed; bits_left_local = slice_bits(sl); bits_left_global -= processed;
         }
         ans = perform_op(ans, sub_calc, sign);
       }
     }
   }
-  return (ans, bits_done);
+  return (ans, bits_done, sl);
 }
 
 ;; testable
@@ -232,7 +235,7 @@ int perform_op (int left, int right, int sign) {  ;; warning DO NOT inline this
   slice sender_address = sl~load_msg_addr();
 
   in_msg_body~load_uint(32);
-  (int ans, int bits) = brackets(in_msg_body, slice_bits(in_msg_body), get_total_bits(in_msg_body), -1);
+  (int ans, int bits, _) = brackets(in_msg_body, slice_bits(in_msg_body), get_total_bits(in_msg_body), -1);
 
   cell response_message_body = begin_cell()
     .store_uint(0, 32)  ;; op_code 0, simple message with comment;
@@ -262,7 +265,7 @@ int perform_op (int left, int right, int sign) {  ;; warning DO NOT inline this
       ).end_cell()
   ).end_cell();
     slice sl = msg.begin_parse();
-    (int ans, int bits) = brackets(sl,slice_bits(sl), get_total_bits(sl), -1);
+    (int ans, int bits, _) = brackets(sl,slice_bits(sl), get_total_bits(sl), -1);
     ~dump([911, ans]);
     return (3, 4);
 }
