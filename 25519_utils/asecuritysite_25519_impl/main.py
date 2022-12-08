@@ -1,6 +1,5 @@
 # https://asecuritysite.com/encryption/ecc_points_add_real
 import sys
-import libnum
 import ecc
 import curve25519
 
