@@ -1,0 +1,196 @@
+{-
+  Contract receives internal message with text comment (https://ton.org/docs/develop/smart-contracts/guidelines/internal-messages) which contains algebraic equation containing numbers in decimal representation and operations `(+-*/)`.
+  All values (including intermediate) fit 256 bit. Contract should respond (coins = 0, mode = 64) with correct answer encoded as text comment back.
+  It is guaranteed that all tests contain a valid algebraic equations.
+  Division result should be rounded down. It is guaranteed that tests do not contain division by zero.
+-}
+
+int get_total_bits (slice sl) {
+  int ans = slice_bits(sl);
+  while (slice_refs(sl)) {
+    sl = (sl~load_ref()).begin_parse();
+    ans += slice_bits(sl);
+  }
+  return ans;
+}
+
+slice get_slice(slice sl, int start_idx, int bit_count){
+  (int slice_first_idx, int slice_last_idx) = (0, slice_bits(sl) - 1);
+  while ((start_idx > slice_last_idx) & (slice_refs(sl) > 0)) {
+    sl = (sl~load_ref()).begin_parse();
+    slice_first_idx = slice_last_idx + 1; slice_last_idx += slice_bits(sl);
+  }
+  builder b = begin_cell();
+  sl~skip_bits(start_idx - slice_first_idx);  ;; might be unsafe
+  while (bit_count & (slice_bits(sl) > 0)){
+    int to_take = min(slice_bits(sl), bit_count);
+    while (to_take) {
+      int sub_take = min(to_take, 256);
+      b~store_uint(sl~load_uint(sub_take), sub_take);
+      to_take -= sub_take; bit_count -= sub_take;
+    }
+    if ((bit_count > 0) & (slice_refs(sl))) {
+      sl = (sl~load_ref()).begin_parse();
+    }
+  }
+  slice ans = b.end_cell().begin_parse();
+  return ans;
+}
+
+int get_uint(slice sl, int start_idx, int bit_count){
+  slice ans = get_slice(sl, start_idx, bit_count);
+  return ans~load_uint(slice_bits(ans));
+}
+
+slice tointeger_slice(int num) {
+  builder b = begin_cell(); int is_negative = 0;
+  if (num < 0) {
+    is_negative = -1; num *= -1;
+  }
+  do {
+    int digit = num % 10;
+    num /= 10;
+    b~store_uint(digit + 48, 8);
+  } until (num == 0);
+  cell ans = b.end_cell();
+
+  b = begin_cell();
+  if (is_negative) {
+    b~store_uint(45, 8);
+  }
+  slice sl = ans.begin_parse();
+  int length = slice_bits(sl);
+  int neg_idx = 8;
+  do {
+    (_, int tmp) = sl.slice_last(neg_idx).load_uint(8);
+    b~store_uint(tmp, 8);
+    neg_idx += 8;
+  } until (neg_idx > length);
+  return b.end_cell().begin_parse();
+}
+
+(int, int) nxt_num(slice sl, int bits_left) {
+  (int num, int bits_done) = (0, 0);
+  while (bits_left) {
+    int hint = sl~load_uint(8);
+    if ((hint >= 48) & (hint <= 57)){
+      bits_done += 8; bits_left -= 8;
+      num = 10 * num + (hint - 48);
+    } else {
+      bits_left = 0;
+    }
+  }
+  return (num, bits_done);
+}
+
+int perform_op (int left, int right, int sign) {
+  if (sign == 43){
+    return left + right;
+  } elseif (sign == 47) {
+    return left / right;
+  } elseif (sign == 42) {
+    return left * right;
+  } else {
+    return left - right;
+  }
+}
+
+(int, int) mul_div (int bits_left, int bits_done, slice in_msg_body);
+
+;; NUM ), +/*-) ; (, ( NUM ; +/*-, ( NUM
+
+;; must start with a bracket if subseq run, which must contain at least one integer
+;; may end with eof or )
+(int, int) brackets (int bits_left, int bits_done, int first_run, slice in_msg_body) {
+  if (~ first_run){
+    bits_done += 8; bits_left -= 8;   ;; RM first bracket
+  }
+  (int ans, int processed, int sign, int hint) = (0, 0, 43, -1);
+  do {
+    (int sub_calc, processed) = mul_div(bits_left, bits_done, in_msg_body);
+    bits_left -= processed - bits_done; bits_done = processed;
+    ans = perform_op(ans, sub_calc, sign);
+    if (bits_left >= 8) {
+      hint = get_uint(in_msg_body, bits_done, 8);
+      if (hint == 41) {   ;; met end of bracket
+        bits_done += 8; bits_left = 0;
+      } else {
+        sign = hint;
+        bits_done += 8; bits_left -= 8;
+      }
+    }
+  } until (bits_left == 0);
+  return (ans, bits_done);
+}
+
+;; expects at least 1 digit in slice. Proceeds execution till + or - or eof met
+(int, int) mul_div (int bits_left, int bits_done, slice in_msg_body) {
+  (int ans, int processed) = (-1, 0);
+  int hint = get_uint(in_msg_body, bits_done, 8);
+  if (hint == 40) {     ;; left_bracket after + or - sign
+    (ans, processed) = brackets(bits_left, bits_done, 0, in_msg_body);
+    bits_left -= processed - bits_done; bits_done = processed;
+  } else {              ;; NUM after + or - sign
+    (ans, processed) = nxt_num(get_slice(in_msg_body, bits_done, 700), bits_left);
+    bits_done += processed; bits_left -= processed;
+  }
+
+  while (bits_left >= 8) {
+    hint = get_uint(in_msg_body, bits_done, 8);
+    if ((hint == 41) | (hint == 43) | (hint == 45)) {   ;; right_bracket, + or - after NUM
+      bits_left = 0;
+    } else {                                  ;; * or / sign after NUM or right_bracket
+      int sign = hint;
+      bits_done += 8; bits_left -= 8;
+      hint = get_uint(in_msg_body, bits_done, 8);
+      if (hint == 40) {       ;; left_bracket after sign
+        (int sub_calc, processed) = brackets(bits_left, bits_done, 0, in_msg_body);
+        bits_left -= processed - bits_done; bits_done = processed;
+        ans = perform_op(ans, sub_calc, sign);
+      } else {                ;; NUM after sign
+        (int sub_calc, processed) = nxt_num(get_slice(in_msg_body, bits_done, 700), bits_left);
+        bits_done += processed; bits_left -= processed;
+        ans = perform_op(ans, sub_calc, sign);
+      }
+    }
+  }
+  return (ans, bits_done);
+}
+
+;; testable
+() recv_internal (cell message, slice in_msg_body) {
+  slice sl = message.begin_parse();
+  int flags = sl~load_uint(4); ;; int_msg_info$0 ihr_disabled:Bool bounce:Bool bounced:Bool
+  slice sender_address = sl~load_msg_addr();
+
+  in_msg_body~load_uint(32);
+  (int ans, int bits) = brackets(get_total_bits(in_msg_body), 0, -1, in_msg_body);
+
+  cell response_message_body = begin_cell()
+    .store_uint(0, 32)  ;; op_code 0, simple message with comment;
+    .store_slice(tointeger_slice(ans))  ;; ans in ascii hex
+    .end_cell();
+  
+  cell response_msg = begin_cell()
+    .store_uint(0x18, 6)
+    .store_slice(sender_address)  ;; addr dest
+    .store_grams(0)
+    .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 0)
+    .store_uint(1, 1)
+    .store_ref(response_message_body)
+    .end_cell();
+
+  send_raw_message(response_msg, 64);
+}
+
+(int, int) fme (int a, int b) method_id {
+  cell msg = begin_cell().store_uint(16393665708263953322375373876328806561833, 136).end_cell();     ;; -3 -9 = -12
+  slice sl = msg.begin_parse();
+  (int ans, int bits) = brackets(get_total_bits(sl), 0, -1, sl);
+  ~dump([9112, ans]);
+  
+  slice integer_rep = tointeger_slice(ans);
+  ~dump(integer_rep~load_uint(slice_bits(integer_rep)));
+  ;;~dump(115792089237316195423570985008687907853269984665640564039457584007913129639935 / 5);
+  return (3, 4);
+}
