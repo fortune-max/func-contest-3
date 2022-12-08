@@ -1,6 +1,6 @@
 contract:
   data: fift/data.fif
   func:
-    - 3.fc
+    - 4.fc
   tests:
-    - 3_test.fc
+    - test.fc
