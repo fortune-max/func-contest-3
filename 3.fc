@@ -5,7 +5,7 @@
   Division result should be rounded down. It is guaranteed that tests do not contain division by zero.
 -}
 
-int get_total_bits (slice sl) {
+int get_total_bits (slice sl) inline {
   int ans = slice_bits(sl);
   while (slice_refs(sl)) {
     sl = (sl~load_ref()).begin_parse();
@@ -43,7 +43,7 @@ slice tointeger_slice(int num) {
 
 ;; load int across slices and refs. to be followed by a skip_bits_custom() call as this is for lookaheads
 ;; return bits requested and new slice to continue reading from
-(slice, slice) load_bits_custom (slice sl, int bit_shift_global) {
+(slice, slice) load_bits_custom (slice sl, int bit_shift_global) inline  {
   builder b = begin_cell();
   while (bit_shift_global) {
     int to_take = min(slice_bits(sl), bit_shift_global);
@@ -56,12 +56,24 @@ slice tointeger_slice(int num) {
   return (b.end_cell().begin_parse(), sl);
 }
 
+slice skip_bits_custom(slice sl, int bit_shift_global) inline {
+  while (bit_shift_global){
+    int to_take = min(slice_bits(sl), bit_shift_global);
+    sl~skip_bits(to_take);
+    bit_shift_global -= to_take;
+    if ((slice_bits(sl) == 0) & slice_refs(sl)) {
+      sl = (sl~load_ref()).begin_parse();
+    }
+  }
+  return sl;
+}
+
 ;; expects at least 1 digit (8-bit) in slice
-(int, int) nxt_num(slice sl, int bits_left_local, int bits_left_global) {
+(int, int) nxt_num(slice sl, int bits_left_local, int bits_left_global) inline {
   (int num, int bits_done) = (0, 0);
   while (bits_left_global) {
     int hint = -1;
-    if (bits_left_local > 8){
+    if (bits_left_local >= 8){
       hint = sl~load_uint(8);
     } else {
       (slice tmp_sl, sl) = load_bits_custom(sl, 8);
@@ -85,11 +97,8 @@ int perform_op (int left, int right, int sign) {  ;; warning DO NOT inline this
     return left / right;
   } elseif (sign == 42) {
     return left * right;
-  } elseif (sign == 45) {
-    return left - right;
   } else {
-    while (sign) { ~dump(sign); }   ;; this sign not handled. use */-+
-    return 42;
+    return left - right;
   }
 }
 
@@ -99,98 +108,55 @@ int perform_op (int left, int right, int sign) {  ;; warning DO NOT inline this
 
 ;; must start with a bracket if subseq run, which must contain at least one integer
 ;; may end with eof or )
-(int, int) brackets (slice sl, int bits_left_local, int bits_left_global, int first_run) {
+(int, int) brackets (slice sl, int bits_left_local, int bits_left_global, int first_run) inline {
   int bits_done = 0;
   if (~ first_run){ ;; RM first bracket
-    if (bits_left_local > 8){
-      (_, int tmp) = sl.load_uint(8);
-      while (tmp != 40) { ~dump(tmp); }
+    if (bits_left_local >= 8){
       sl~skip_bits(8); bits_done += 8; bits_left_local -= 8; bits_left_global -= 8;
     } else {
-      (slice tmp_tmp, sl) = load_bits_custom(sl, 8);
-      int tmp = tmp_tmp~load_uint(8);
-      while (tmp != 40) { ~dump(tmp); }
+      (_, sl) = load_bits_custom(sl, 8);
       bits_done += 8; bits_left_local = slice_bits(sl); bits_left_global -= 8;
     }
   }
-  int hint = -1;
-  if (bits_left_local > 8){
-    (_, hint) = sl.load_uint(8);
-  } else {
-    (slice tmp_slice, _) = load_bits_custom(sl, 8);
-    hint = tmp_slice~load_uint(8);
-  }
 
-  (int ans, int processed) = (0, 0);
-  if (hint == 40){      ;; first elem content in bracket is (
-    (ans, processed) = brackets(sl, bits_left_local, bits_left_global, 0);
-    if (bits_left_local > processed){
+  (int ans, int processed, int sign, int hint) = (0, 0, 43, -1);
+  slice new_slice = sl;    ;; placeholder to set scope
+  do {
+    (int sub_calc, processed) = mul_div(sl, bits_left_local, bits_left_global);
+    if (bits_left_local >= processed){
       sl~skip_bits(processed); bits_done += processed; bits_left_local -= processed; bits_left_global -= processed;
     } else {
-      (_, sl) = load_bits_custom(sl, processed);
+      sl = skip_bits_custom(sl, processed);
       bits_done += processed; bits_left_local = slice_bits(sl); bits_left_global -= processed;
     }
-  } elseif ((hint >= 48) & (hint <= 57)) {        ;; first elem content in bracket is number
-    (ans, processed) = nxt_num(sl, bits_left_local, bits_left_global);
-    if (bits_left_local > processed){
-      sl~skip_bits(processed); bits_done += processed; bits_left_local -= processed; bits_left_global -= processed;
-    } else {
-      (_, sl) = load_bits_custom(sl, processed);
-      bits_done += processed; bits_left_local = slice_bits(sl); bits_left_global -= processed;
-    }
-  } else {
-    while (hint) { ~dump(hint); }   ;; first element content in bracket not handled
-  }
-
-  while (bits_left_global >= 8) {
-    slice new_slice = begin_cell().end_cell().begin_parse();    ;; placeholder to set scope
-    if (bits_left_local > 8){
-      (_, hint) = sl.load_uint(8);
-    } else {
-      (slice tmp_slice, new_slice) = load_bits_custom(sl, 8);
-      hint = tmp_slice~load_uint(8);
-    }
-    if (hint == 41) {   ;; end of this bracket met, incl
-      bits_done += 8; bits_left_global = 0;
-    } elseif ((hint == 42) | (hint == 43) | (hint == 45) | (hint == 47)) {    ;; is a sign
-      int sign = hint; ;; * or / if first run. + or - if subsequent run
-      if (bits_left_local > 8) {
-        sl~skip_bits(8); bits_left_local -= 8; bits_done += 8; bits_left_global -= 8;
-      } else {
-        sl = new_slice; bits_left_local = slice_bits(sl); bits_done += 8; bits_left_global -= 8;
-      }
-
-      if (bits_left_local > 8){
+    ans = perform_op(ans, sub_calc, sign);
+    if (bits_left_global >= 8) {
+      if (bits_left_local >= 8){
         (_, hint) = sl.load_uint(8);
       } else {
-        (slice tmp_slice, _) = load_bits_custom(sl, 8);
+        (slice tmp_slice, new_slice) = load_bits_custom(sl, 8);
         hint = tmp_slice~load_uint(8);
       }
-
-      if ((bits_left_local >= 8) & (((hint >= 48) & (hint <= 57)) | (hint == 40))){  ;; after sign must be NUM or left_bracket
-        (int sub_calc, processed) = mul_div(sl, bits_left_local, bits_left_global);
-        if (bits_left_local > processed){
-          sl~skip_bits(processed); bits_done += processed; bits_left_local -= processed; bits_left_global -= processed;
-        } else {
-          (_, sl) = load_bits_custom(sl, processed);
-          bits_done += processed; bits_left_local = slice_bits(sl); bits_left_global -= processed;
-        }
-        ans = perform_op(ans, sub_calc, sign);
+      if (hint == 41) {   ;; met end of bracket
+        bits_done += 8; bits_left_global = 0;
       } else {
-        while (hint) { ~dump(hint); }   ;; No num or bracket after sign
+        sign = hint;
+        if (bits_left_local >= 8){
+          sl~skip_bits(8); bits_done += 8; bits_left_local -= 8; bits_left_global -= 8;
+        } else {
+          sl = new_slice; bits_done += 8; bits_left_local = slice_bits(sl); bits_left_global -= 8;
+        }
       }
-    } else {
-      while (hint) { ~dump(hint); }   ;; No sign or right_bracket after NUM or right_bracket
     }
-  }
+  } until (bits_left_global == 0);
   return (ans, bits_done);
 }
 
 ;; expects at least 1 digit in slice. Proceeds execution till + or - or eof met
-(int, int) mul_div (slice sl, int bits_left_local, int bits_left_global) {
+(int, int) mul_div (slice sl, int bits_left_local, int bits_left_global) inline {
   (int ans, int processed, int bits_done) = (-1, 0, 0);
-  int hint = -1; slice new_slice = begin_cell().end_cell().begin_parse();    ;; placeholder to set scope
-  if (bits_left_local > 8){
+  int hint = -1; slice new_slice = sl;    ;; placeholder to set scope
+  if (bits_left_local >= 8){
     (_, hint) = sl.load_uint(8);
   } else {
     (slice tmp_slice, _) = load_bits_custom(sl, 8);
@@ -198,25 +164,23 @@ int perform_op (int left, int right, int sign) {  ;; warning DO NOT inline this
   }
   if (hint == 40) { ;; left_bracket after + or - sign
     (ans, processed) = brackets(sl, bits_left_local, bits_left_global, 0);
-    if (bits_left_local > processed){
+    if (bits_left_local >= processed){
       sl~skip_bits(processed); bits_done += processed; bits_left_local -= processed; bits_left_global -= processed;
     } else {
-      (_, sl) = load_bits_custom(sl, processed);
+      sl = skip_bits_custom(sl, processed);
       bits_done += processed; bits_left_local = slice_bits(sl); bits_left_global -= processed;
     }
-  } elseif ((hint >= 48) & (hint <= 57)) {  ;; NUM after + or - sign
+  } else {  ;; NUM after + or - sign
     (ans, processed) = nxt_num(sl, bits_left_local, bits_left_global);
-    if (bits_left_local > processed){
+    if (bits_left_local >= processed){
       sl~skip_bits(processed); bits_done += processed; bits_left_local -= processed; bits_left_global -= processed;
     } else {
-      (_, sl) = load_bits_custom(sl, processed);
+      sl = skip_bits_custom(sl, processed);
       bits_done += processed; bits_left_local = slice_bits(sl); bits_left_global -= processed;
     }
-  } else {
-    while (hint) { ~dump(hint); }
   }
   while (bits_left_global >= 8) {
-    if (bits_left_local > 8){
+    if (bits_left_local >= 8){
       (_, hint) = sl.load_uint(8);
     } else {
       (slice tmp_slice, new_slice) = load_bits_custom(sl, 8);
@@ -224,14 +188,14 @@ int perform_op (int left, int right, int sign) {  ;; warning DO NOT inline this
     }
     if ((hint == 41) | (hint == 43) | (hint == 45)) {  ;; right_bracket, + or - after NUM
       bits_left_global = 0;
-    } elseif ((hint == 42) | (hint == 47)) { ;; * or / sign after NUM or right_bracket
+    } else { ;; * or / sign after NUM or right_bracket
       int sign = hint;
-      if (bits_left_local > 8){
+      if (bits_left_local >= 8){
         sl~skip_bits(8); bits_left_local -= 8; bits_done += 8; bits_left_global -= 8;
       } else {
         sl = new_slice; bits_left_local = slice_bits(sl); bits_done += 8; bits_left_global -= 8;
       }
-      if (bits_left_local > 8){
+      if (bits_left_local >= 8){
         (_, hint) = sl.load_uint(8);
       } else {
         (slice tmp_slice, new_slice) = load_bits_custom(sl, 8);
@@ -239,27 +203,23 @@ int perform_op (int left, int right, int sign) {  ;; warning DO NOT inline this
       }
       if (hint == 40) {     ;; left_bracket after sign
         (int sub_calc, processed) = brackets(sl, bits_left_local, bits_left_global, 0);
-        if (bits_left_local > processed){
+        if (bits_left_local >= processed){
           sl~skip_bits(processed); bits_done += processed; bits_left_local -= processed; bits_left_global -= processed;
         } else {
-          (_, sl) = load_bits_custom(sl, processed);
+          sl = skip_bits_custom(sl, processed);
           bits_done += processed; bits_left_local = slice_bits(sl); bits_left_global -= processed;
         }
         ans = perform_op(ans, sub_calc, sign);
-      } elseif ((hint >= 48) & (hint <= 57)) {        ;; NUM after sign
+      } else {        ;; NUM after sign
         (int sub_calc, processed) = nxt_num(sl, bits_left_local, bits_left_global);
-        if (bits_left_local > processed){
+        if (bits_left_local >= processed){
           sl~skip_bits(processed); bits_done += processed; bits_left_local -= processed; bits_left_global -= processed;
         } else {
-          (_, sl) = load_bits_custom(sl, processed);
+          sl = skip_bits_custom(sl, processed);
           bits_done += processed; bits_left_local = slice_bits(sl); bits_left_global -= processed;
         }
         ans = perform_op(ans, sub_calc, sign);
-      } else {  ;; invalid char after sign
-        while (hint) { ~dump(hint); }
       }
-    } else {  ;; invalid char after NUM or right_bracket
-      while (hint) { ~dump(hint); }
     }
   }
   return (ans, bits_done);
@@ -270,10 +230,6 @@ int perform_op (int left, int right, int sign) {  ;; warning DO NOT inline this
   slice sl = message.begin_parse();
   int flags = sl~load_uint(4); ;; int_msg_info$0 ihr_disabled:Bool bounce:Bool bounced:Bool
   slice sender_address = sl~load_msg_addr();
-
-  while (slice_bits(in_msg_body) < 48) {
-    ~dump(88);
-  }
 
   in_msg_body~load_uint(32);
   (int ans, int bits) = brackets(in_msg_body, slice_bits(in_msg_body), get_total_bits(in_msg_body), -1);
@@ -296,26 +252,17 @@ int perform_op (int left, int right, int sign) {  ;; warning DO NOT inline this
 }
 
 (int, int) fme (int a, int b) method_id {
-
-    cell msg = begin_cell().store_uint(48603374149052085784096054, 88).end_cell();     ;; 2 => 50
+    cell msg = begin_cell().store_uint(0x2d392b282d322d34292a282d382b3229, 128).end_cell();     ;; 2 => 50
+      cell msg = begin_cell().store_uint(0x3233313538343137383437343633323339303834373134313937303031373337, 256).store_ref(
+      begin_cell().store_uint(0x3538313537303635333939363933333132383131323830373839313531363830, 256).store_ref(
+        begin_cell().store_uint(0x31353832363235393237393837, 104)    ;; max_int / 5
+        .store_uint(0x2a, 8) ;; *
+        .store_uint(0x35, 8)  ;; 5
+        .end_cell()
+      ).end_cell()
+  ).end_cell();
     slice sl = msg.begin_parse();
     (int ans, int bits) = brackets(sl,slice_bits(sl), get_total_bits(sl), -1);
     ~dump([911, ans]);
-    slice sl = tointeger_slice(ans);
-    ~dump(slice_bits(sl));
-    ~dump(sl~load_uint(8));
-    ~dump(sl~load_uint(8));
-    ~dump(sl~load_uint(8));
-    ;; ~dump(sl~load_uint(8));
-    (slice a, slice b) = load_bits_custom(msg.begin_parse(), 25);
-    ~dump(a);
-    ~dump(9);
-    int max_int = 115792089237316195423570985008687907853269984665640564039457584007913129639935;
-    slice my_sl = tointeger_slice(max_int);
-    ~dump(max_int);
-    ~dump(my_sl);
-    cell c = begin_cell().store_slice(my_sl).end_cell();
-    ~dump([c, slice_bits(c.begin_parse())]);
-    ;;~dump(sl~load_uint(8));
     return (3, 4);
 }
