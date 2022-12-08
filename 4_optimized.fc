@@ -35,7 +35,7 @@ int inv(int n) inline {
   int A = 486662;
 
   int l = 1;
-  x1 %= MOD; y1 %= MOD; x2 %= MOD; y2 %= MOD;   ;; May not be necessary
+  ;; x1 %= MOD; y1 %= MOD; x2 %= MOD; y2 %= MOD;   ;; May not be necessary
 
   if ((y1 != 0) & (y2 != 0)){
     if (x1 == x2){
@@ -73,7 +73,6 @@ int inv(int n) inline {
     if (x1 == x2){
       if (y1 == y2){
         (_, int l_sq) = mymuldivmod(l, l, MOD);
-        (_, int l_cb) = mymuldivmod(l_sq, l, MOD);
 
         int x3 = ((l_sq - A) - (x1 + x2) % MOD) % MOD;
 
@@ -85,7 +84,6 @@ int inv(int n) inline {
       }
     } else {
       (_, int l_sq) = mymuldivmod(l, l, MOD);
-      (_, int l_cb) = mymuldivmod(l_sq, l, MOD);
 
       int x3 = ((l_sq - A) - (x1 + x2) % MOD) % MOD;
 
@@ -105,6 +103,15 @@ int inv(int n) inline {
   return (x_2, x_3);
 }
 
+int get_bits(int x) inline {
+  int bits = 0;
+  while (x){
+    bits += 1;
+    x /= 2;
+  }
+  return bits;
+}
+
 ;; testable
 int mul(int x1, int factor) {
   ;; Add code here
@@ -120,7 +127,7 @@ int mul(int x1, int factor) {
   int k = factor;
   int MOD = 57896044618658097711785492504343953926634992332820282019728792003956564819949;
   int A24 = 121665;
-  int t = 254;
+  int t = get_bits(k) - 1;
 
   do {
     int k_t = (k >> t) & 1;
