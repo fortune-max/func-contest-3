@@ -86,13 +86,64 @@ int inv(int n) {
   return add(x1, y1, x1, y1);
 }
 
+(int, int) cswap(int swap, int x_2, int x_3){
+  int MOD = 57896044618658097711785492504343953926634992332820282019728792003956564819949;
+  int dummy = swap * ((x_2 - x_3) % MOD);
+  x_2 = (x_2 - dummy) % MOD;
+  x_3 = (x_3 + dummy) % MOD;
+  return (x_2, x_3);
+}
+
 ;; testable
 int mul(int x1, int factor) {
   ;; Add code here
   ;; return x coordinate of Point1 * factor
   ;;(_, int l) = mymuldivmod(x, y, MOD);
+  ;; u = x1, k = factor
+  int x_1 = x1;
+  int x_2 = 1;
+  int z_2 = 0;
+  int x_3 = x1;
+  int z_3 = 1;
+  int swap = 0;
+  int k = factor;
+  int MOD = 57896044618658097711785492504343953926634992332820282019728792003956564819949;
+  int A24 = 121665;
+  int t = 254;
 
-  return 0;
+  do {
+    int k_t = (k >> t) & 1;
+    swap ^= k_t;
+    (x_2, x_3) = cswap(swap, x_2, x_3);
+    (z_2, z_3) = cswap(swap, z_2, z_3);
+    swap = k_t;
+
+    int A = (x_2 + z_2) % MOD;
+    (_, int AA) = mymuldivmod(A, A, MOD);
+    int B = (x_2 - z_2) % MOD;
+    (_, int BB) = mymuldivmod(B, B, MOD);
+    int E = (AA - BB) % MOD;
+    int C = (x_3 + z_3) % MOD;
+    int D = (x_3 - z_3) % MOD;
+    (_, int DA) = mymuldivmod(D, A, MOD);
+    (_, int CB) = mymuldivmod(C, B, MOD);
+    x_3 = (DA + CB) % MOD;
+    (_, x_3) = mymuldivmod(x_3, x_3, MOD);
+    int tmp = (DA - CB) % MOD;
+    (_, tmp) = mymuldivmod(tmp, tmp, MOD);
+    (_, z_3) = mymuldivmod(tmp, x_1, MOD);
+    (_, x_2) = mymuldivmod(AA, BB, MOD);
+
+    (_, tmp) = mymuldivmod(A24, E, MOD);
+    tmp = (AA + tmp) % MOD;
+    (_, z_2) = mymuldivmod(tmp, E, MOD);
+    t -= 1;
+  } until (t < 0);
+
+  (x_2, x_3) = cswap(swap, x_2, x_3);
+  (z_2, z_3) = cswap(swap, z_2, z_3);
+  (_, int ans) = mymuldivmod(x_2, inv(z_2), MOD);
+  return ans;
 }
 
 (int, int) fme (int a, int b) method_id {
@@ -134,5 +185,7 @@ int mul(int x1, int factor) {
   (int x_123, int y_123) = add(x3_1, y3_1, x2, y2);
   ~dump([916, x_123, y_123]);
 
+
+  ~dump([1021, mul(56391866308239752110494101482511933051315484376135027248208522567059122930692, 4)]);
   return (34, 43);
 }
