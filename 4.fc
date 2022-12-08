@@ -1,0 +1,170 @@
+{-
+  Implement Curve25519 addition and multiplication.
+-}
+
+() recv_internal () {
+
+}
+
+(int, int) mymuldivmod(int x, int y, int z) asm "MULDIVMOD";
+
+int expmod_2(int b, int e, int m){
+  int res = 1;
+  while (e > 1){
+    if (e & 1) {
+      (_, res) = mymuldivmod(res, b, m);
+    }
+    (_, b) = mymuldivmod(b, b, m);
+    e /= 2;
+  }
+  (_, int ans) = mymuldivmod(b, res, m);
+  return ans;
+}
+
+;; int expmod (int b, int e, int m) {
+;;   int MOD = 57896044618658097711785492504343953926634992332820282019728792003956564819949;
+;;   if (e == 0) {
+;;     return 1;
+;;   } else {
+;;     int term_1 = expmod(b, e / 2, m);
+;;     (_, int t) = mymuldivmod(term_1, term_1, MOD);
+;;     if (e & 1){
+;;        (_, t) = mymuldivmod(t, b, MOD);
+;;     }
+;;     return t;
+;;   }
+;; }
+
+int inv(int n) {
+  int MOD = 57896044618658097711785492504343953926634992332820282019728792003956564819949;
+  return expmod_2(n % MOD, MOD - 2, MOD);   ;; n should always be less than MOD
+}
+
+
+;; testable
+(int,int) add(int x1, int y1, int x2, int y2) {
+  ;; Add code here
+  ;; return x,y coordinate of Point1 + Point2
+  
+  int MOD = 57896044618658097711785492504343953926634992332820282019728792003956564819949;
+  int A = 486662;
+
+  int l = 1;
+  x1 %= MOD; y1 %= MOD; x2 %= MOD; y2 %= MOD;
+
+  if ((y1 != 0) & (y2 != 0)){
+    ;; actually compute l as x3, y3 ans
+    if (x1 == x2){
+      if (y1 == y2){
+        ;; double
+        (_, l) = mymuldivmod(x1, x1, MOD);
+        (_, l) = mymuldivmod(3, l, MOD);
+        (_, int term_2) = mymuldivmod((2 * A) % MOD, x1, MOD);
+        l = ((l + term_2) % MOD + 1) % MOD;
+        (_, l) = mymuldivmod(l, inv((2 * y1) % MOD) % MOD, MOD);
+      }
+    } else {
+      ;; distinct points
+      (_, l) = mymuldivmod((y2 - y1) % MOD, inv((x2 - x1) % MOD) % MOD, MOD);
+    }
+  }
+  
+  (_, int l_sq) = mymuldivmod(l, l, MOD);
+  (_, int l_cb) = mymuldivmod(l_sq, l, MOD);
+
+  int x3 = ((l_sq - A) % MOD - (x1 + x2) % MOD) % MOD;
+
+  (_, int y3) = mymuldivmod(l, (x1 - x3) % MOD, MOD);
+  y3 = (y3 - y1) % MOD;
+
+  if ((y1 == 0) | (y2 == 0)){
+    ;; infinity calculations
+    if (y1 == y2) {
+      ;; O + O = O [Not Tested]
+      return (0, 0);
+    } else {
+      ;; O + P = P or P + O = P [Not Tested]
+      if (y1 != 0){
+        ;; P + O = P [Not Tested]
+        return (x1, y1);
+      } else {
+        ;; O + P = P [Not Tested]
+        return (x2, y2);
+      }
+    }
+  } else {
+    if (x1 == x2){
+      if (y1 == y2){
+        ;; double points P + P = Q
+        return (x3, y3);
+      } else {
+        ;; point and it's negation return ∞ (P + -P = O) [Not Tested]
+        return (0, 0);
+      }
+    } else {
+      ;; distinct points P + Q = R
+      return (x3, y3);
+    }
+  }
+}
+
+(int, int) double(int x1, int y1){
+  return add(x1, y1, x1, y1);
+}
+
+;; testable
+int mul(int x1, int factor) {
+  ;; Add code here
+  ;; return x coordinate of Point1 * factor
+  ;;(_, int l) = mymuldivmod(x, y, MOD);
+
+  return 0;
+}
+
+(int, int) fme (int a, int b) method_id {
+  int MOD = 57896044618658097711785492504343953926634992332820282019728792003956564819949;
+  int x1 = 56391866308239752110494101482511933051315484376135027248208522567059122930692;
+  int y1 = 17671033459111968710988296061676524036652749365424210951665329683594356030064;
+  int x2 = 39028180402644761518992797890514644768585183933988208227318855598921766377692;
+  int y2 = 17694324391104469229766971147677885172552105420452910290862122102896539285628;
+  (int x4, int y4) = (56391866308239752110494101482511933051315484376135027248208522567059122930692, 40225011159546129000797196442667429889982242967396071068063462320362208789885);
+
+  ;; diff coords
+  (int x3, int y3) = add(x1, y1, x2, y2);
+  ~dump([9110, x3, y3]);
+  (int x3, int y3) = add(x2, y2, x1, y1);
+  ~dump([9115, x3, y3]);
+
+  ;; same coords
+  (int x4_4, int y4_4) = double(double(x4, y4));
+  ~dump([912, x4_4, y4_4]);
+
+  ;; mirror coords P + -P = O
+  (int x5, int y5) = add(x2, y2, x2, (- y2) % MOD);
+  ~dump([9130, x5, y5]);
+  (x5, y5) = add(x2, y2, x2, - y2);
+  ~dump([9135, x5, y5]);
+
+  ;; O + O = O
+  (int x6, int y6) = add(0, 0, 0, 0);
+  ~dump([914, x6, y6]);
+
+  ;; O + P = P
+  (int x6, int y6) = add(0, 0, x4_4, y4_4);
+  ~dump([9150, x6, y6]);
+  (x6, y6) = add(x4_4, y4_4, 0, 0);
+  ~dump([9155, x6, y6]);
+  
+  ;; P + Q + R = 0
+  (int x3_1, int y3_1) = add(x3, - y3, x1, y1);
+  (int x_123, int y_123) = add(x3_1, y3_1, x2, y2);
+  ~dump([916, x_123, y_123]);
+
+  ;; ~dump(9 + 3 * 4 * (10 % 7));
+
+  ;; int num_1 = 115792089237316195423570985008687907853269984665640564039457584007913129639935;     ;; max_int 2^256 - 1
+  ;; int num_2 = 115792089237316195423570985008687907853269984665640564039457584007913129639935;
+  ;; (_, int ans) = mymuldivmod(- MOD - 900,  - MOD - 900, MOD + 1);
+  ;; ~dump([1001, num_1, num_2, ans]);
+  return (34, 43);
+}
