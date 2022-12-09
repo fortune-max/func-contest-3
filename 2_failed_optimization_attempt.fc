@@ -30,6 +30,69 @@
   (14, 14)         | (14,14); (5,3)
 -}
 
+(cell, cell) get_body_2(cell msgs, int msg_idx) {
+  slice chain_slice = msgs.begin_parse(); builder b = begin_cell(); int ct = 0; int pos = -1;
+  while (ct < 12) {
+    int curr_id = chain_slice~load_uint(16); ct += 1;
+    if ((curr_id == msg_idx) & (pos == -1)){  ;; & (pos == -1) not necessary here (only one match possible)
+      b~store_uint(0xffff, 16); pos = ct;
+    } else {
+      b~store_uint(curr_id, 16);
+    }
+  }
+
+  ct = 0; tuple my_tup = empty_tuple(); cell interested = msgs; cell chain_cell = chain_slice~load_ref();
+  while (ct < 12) {
+    slice chain_slice = chain_cell.begin_parse(); ct += 1;
+    if (ct != 12) {
+      chain_cell = chain_slice~load_ref();
+    }
+    cell msg = chain_slice~load_ref();
+    if (ct == pos) { interested = msg; }
+    my_tup~tpush(msg);
+  } ct -= 1;
+
+  cell last = begin_cell().store_ref(my_tup.at(ct)).end_cell(); ct -= 1;
+  while (ct >= 0) {
+    last = begin_cell().store_ref(last).store_ref(my_tup.at(ct)).end_cell(); ct -= 1;
+  }
+  
+  return (b.store_ref(last).end_cell(), interested);
+}
+
+cell set_body_2(cell new_msg, int msg_idx, cell msgs) {
+  slice chain_slice = msgs.begin_parse(); builder b = begin_cell(); int ct = 0; int pos = -1;
+  while (ct < 12) {
+    int curr_id = chain_slice~load_uint(16); ct += 1;
+    if ((curr_id == 0xffff) & (pos == -1)){  ;; & (pos == -1) not necessary here (only one match possible)
+      b~store_uint(msg_idx, 16); pos = ct;
+    } else {
+      b~store_uint(curr_id, 16);
+    }
+  }
+
+  ct = 0; tuple my_tup = empty_tuple(); cell chain_cell = chain_slice~load_ref();
+  while (ct < 12) {
+    slice chain_slice = chain_cell.begin_parse(); ct += 1;
+    if (ct != 12) {
+      chain_cell = chain_slice~load_ref();
+    }
+    cell msg = chain_slice~load_ref();
+    if (ct == pos) {
+      my_tup~tpush(new_msg);
+    } else {
+      my_tup~tpush(msg);
+    }
+  } ct -= 1;
+
+  cell last = begin_cell().store_ref(my_tup.at(ct)).end_cell(); ct -= 1;
+  while (ct >= 0) {
+    last = begin_cell().store_ref(last).store_ref(my_tup.at(ct)).end_cell(); ct -= 1;
+  }
+  
+  return (b.store_ref(last).end_cell());
+}
+
 ;; returns cell at index msg_idx, and an new cell without msg_idx, msg_idx must be valid
 ;; ASSUMPTION 65536 - 12 max receivable messages (16-bit msg_id)
 (cell, cell) get_body(cell msgs, int msg_idx) {
@@ -127,34 +190,12 @@ cell set_body (cell msg, int msg_idx, cell msgs){
   (int score, int value, cell msg) = (in_msg_body~load_uint(32), in_msg_body~load_grams(), in_msg_body~load_ref());
 
   ;; first run
-  if (slice_bits(get_data().begin_parse()) == 0){
-    cell cell_tree = begin_cell()
-    .store_uint(0xffffffffffffffffffffffffffffffffffffffffffffffff, 192)
-    .store_ref(
-      begin_cell()
-        .store_ref(begin_cell().end_cell())
-        .store_ref(begin_cell().end_cell())
-        .store_ref(begin_cell().end_cell())
-        .store_ref(begin_cell().end_cell())
-        .end_cell()
-    )
-    .store_ref(
-      begin_cell()
-        .store_ref(begin_cell().end_cell())
-        .store_ref(begin_cell().end_cell())
-        .store_ref(begin_cell().end_cell())
-        .store_ref(begin_cell().end_cell())
-        .end_cell()
-    )
-    .store_ref(
-      begin_cell()
-        .store_ref(begin_cell().end_cell())
-        .store_ref(begin_cell().end_cell())
-        .store_ref(begin_cell().end_cell())
-        .store_ref(begin_cell().end_cell())
-        .end_cell()
-    )
-    .end_cell();
+  if (slice_bits(get_data().begin_parse()) == 0) {
+    cell dummy_cell = begin_cell().end_cell(); cell last = begin_cell().store_ref(dummy_cell).end_cell(); int ct = 11;
+    while (ct){
+      last = begin_cell().store_ref(last).store_ref(dummy_cell).end_cell(); ct -= 1;
+    }
+    cell cell_tree = begin_cell().store_uint(0xffffffffffffffffffffffffffffffffffffffffffffffff, 192).store_ref(last).end_cell();
     
     int ct = 12; builder b = begin_cell().store_ref(cell_tree).store_uint(12, 16);  ;; last_idx
     while (ct) {  ;; dummy (score, idx) pairs
@@ -210,12 +251,12 @@ cell set_body (cell msg, int msg_idx, cell msgs){
   }
 
   
-  cell_tree = set_body(msg, curr_idx, cell_tree);
+  cell_tree = set_body_2(msg, curr_idx, cell_tree);
   if (entries == 12){
-    (cell_tree, cell to_send) = get_body(cell_tree, lowest_value_idx);
+    (cell_tree, cell to_send) = get_body_2(cell_tree, lowest_value_idx);
     send_cell(to_send, lowest_value);
     if (lowest_value_idx != highest_score_idx) {
-      (cell_tree, to_send) = get_body(cell_tree, highest_score_idx);
+      (cell_tree, to_send) = get_body_2(cell_tree, highest_score_idx);
       send_cell(to_send, lowest_value_secondary);
     }
   }
@@ -314,45 +355,17 @@ cell set_body (cell msg, int msg_idx, cell msgs){
   set_data(b.end_cell());
 }
 
-() holla (slice sl) {
-
-}
-
 (int, int) fme (int a, int b) method_id {
-  cell cell_tree = begin_cell()
-    .store_uint(0x0001000200030004, 64)
-    .store_uint(0x0005000600070008, 64)
-    .store_uint(0x0009000a000bffff, 64)
-    .store_ref(
-      begin_cell()
-        .store_ref(begin_cell().store_uint(0x1001, 16).end_cell())
-        .store_ref(begin_cell().store_uint(0x1002, 16).end_cell())
-        .store_ref(begin_cell().store_uint(0x1003, 16).end_cell())
-        .store_ref(begin_cell().store_uint(0x1004, 16).end_cell())
-        .end_cell()
-    )
-    .store_ref(
-      begin_cell()
-        .store_ref(begin_cell().store_uint(0x1005, 16).end_cell())
-        .store_ref(begin_cell().store_uint(0x1006, 16).end_cell())
-        .store_ref(begin_cell().store_uint(0x1007, 16).end_cell())
-        .store_ref(begin_cell().store_uint(0x1008, 16).end_cell())
-        .end_cell()
-    )
-    .store_ref(
-      begin_cell()
-        .store_ref(begin_cell().store_uint(0x1009, 16).end_cell())
-        .store_ref(begin_cell().store_uint(0x1010, 16).end_cell())
-        .store_ref(begin_cell().store_uint(0x1011, 16).end_cell())
-        .store_ref(begin_cell().store_uint(0x1012, 16).end_cell())
-        .end_cell()
-    )
-    .end_cell();
-  (cell_tree, cell msg) = get_body(cell_tree, 0x0005);
+  cell dummy_cell = begin_cell().store_uint(12, 8).end_cell(); cell last = begin_cell().store_ref(dummy_cell).end_cell(); int ct = 11;
+  while (ct){
+    last = begin_cell().store_ref(last).store_ref(begin_cell().store_uint(ct, 8).end_cell()).end_cell(); ct -= 1;
+  }
+  cell cell_tree = begin_cell().store_uint(0x000100020003000400050006000700080009000a000bffff, 192).store_ref(last).end_cell();
+  (cell_tree, cell msg) = get_body_2(cell_tree, 0x0005);
   ~dump([1, msg.begin_parse(), cell_tree.begin_parse()]);
-  cell_tree = set_body(begin_cell().store_uint(0xbabe, 32).end_cell(), 0x0020, cell_tree);
+  cell_tree = set_body_2(begin_cell().store_uint(0xbabe, 32).end_cell(), 0x0020, cell_tree);
   ~dump([2, cell_tree.begin_parse()]);
-  (cell_tree, cell msg) = get_body(cell_tree, 0x0020);
-  ~dump([3, msg.begin_parse(), cell_tree.begin_parse()]);
+  (cell_tree, cell msg) = get_body_2(cell_tree, 0x0020);
+  ~dump([1, msg.begin_parse(), cell_tree.begin_parse()]);
   return (3, 4);
 }
