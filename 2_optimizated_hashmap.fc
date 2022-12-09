@@ -30,8 +30,8 @@
   (14, 14)         | (14,14); (5,3)
 -}
 
-() send_cell (cell to_send, int value) impure {
-  ~dump([911, value]);
+() send_cell (cell to_send, int value) inline {
+  ;; ~dump([911, value]);
   cell address = begin_cell().store_uint(4, 3)
     .store_uint(0, 8)
     .store_uint(0, 256).end_cell();
@@ -49,15 +49,9 @@
 }
 
 ;; testable
-() recv_internal (slice in_msg_body) {
+() recv_internal (slice in_msg_body) { ;;}
   (int score, int value, cell msg) = (in_msg_body~load_uint(32), in_msg_body~load_grams(), in_msg_body~load_ref());
-
-  
-}
-
-() holla (int score, int value) impure {
-  ;; (int score, int value, cell msg) = (in_msg_body~load_uint(32), in_msg_body~load_grams(), in_msg_body~load_ref());
-  cell msg = begin_cell().end_cell();
+  ;; () holla (int score, int value) impure { cell msg = begin_cell().end_cell();
   ;; first run
   if (slice_bits(get_data().begin_parse()) == 0) {
     cell dummy_cell = begin_cell().end_cell();
@@ -123,21 +117,23 @@
   set_data(my_data);
 }
 
+;; () holla (int score, int value) impure {}
+
 (int, int) fme (int a, int b) method_id {
-  holla(1, 5);
-  holla(2, 6);
-  holla(3, 100);
-  holla(4, 2);
-  holla(5, 3);
-  holla(6, 4);
-  holla(7, 7);
-  holla(8, 8);
-  holla(9, 9);
-  holla(10, 10);
-  holla(11, 11);
-  holla(12, 20);
-  holla(15, 1);
-  holla(13, 13);
-  holla(14, 14);
+  ;; holla(1, 5);
+  ;; holla(2, 6);
+  ;; holla(3, 100);
+  ;; holla(4, 2);
+  ;; holla(5, 3);
+  ;; holla(6, 4);
+  ;; holla(7, 7);
+  ;; holla(8, 8);
+  ;; holla(9, 9);
+  ;; holla(10, 10);
+  ;; holla(11, 11);
+  ;; holla(12, 20);
+  ;; holla(15, 1);
+  ;; holla(13, 13);
+  ;; holla(14, 14);
   return (3, 4);
 }
