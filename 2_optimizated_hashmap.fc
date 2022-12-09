@@ -30,7 +30,7 @@
   (14, 14)         | (14,14); (5,3)
 -}
 
-() send_cell (cell to_send, int value) inline {
+() send_cell (cell to_send, int value) impure {
   ;; ~dump([911, value]);
   cell address = begin_cell().store_uint(4, 3)
     .store_uint(0, 8)
@@ -54,17 +54,16 @@
   ;; () holla (int score, int value) impure { cell msg = begin_cell().end_cell();
   ;; first run
   if (slice_bits(get_data().begin_parse()) == 0) {
-    cell dummy_cell = begin_cell().end_cell();
-    slice empty_slice = dummy_cell.begin_parse();
+    slice empty_slice = begin_cell().end_cell().begin_parse();
     
     cell map_score_to_key = new_dict();
-    map_score_to_key~idict_set(33, -1, empty_slice);    ;; score int to idx cell slice    ;; TODO rm dummy dict sets
+    map_score_to_key~udict_set(32, 0, empty_slice);    ;; score int to idx cell slice    ;; TODO rm dummy dict sets
 
     cell map_value_to_key = new_dict();
-    map_value_to_key~udict_set(129, 0x1ffffffffffffffffffffffffffffffff, empty_slice);    ;; value int to idx cell slice
+    map_value_to_key~udict_set(128, 0xffffffffffffffffffffffffffffffff, empty_slice);    ;; value int to idx cell slice
 
     cell map_key_to_msg_ref = new_dict();
-    map_key_to_msg_ref~udict_set_ref(160, 0, dummy_cell);   ;; idx to cell ref value and 2nd cell ref msg
+    map_key_to_msg_ref~udict_set(160, 0, empty_slice);   ;; idx to cell ref value and 2nd cell ref msg
 
     cell my_data = begin_cell()
       .store_uint(0, 16)    ;; entries stored
@@ -83,14 +82,14 @@
 
   int key = (value << 32) | score;
   slice key_slice = begin_cell().store_uint(key, 160).end_cell().begin_parse();
-  map_score_to_key~idict_set(33, score, key_slice);
-  map_value_to_key~udict_set(129, value, key_slice);
+  map_score_to_key~udict_set(32, score, key_slice);
+  map_value_to_key~udict_set(128, value, key_slice);
   map_key_to_msg_ref~udict_set_ref(160, key, msg);
   
   if (entries == 12) {
-    (map_score_to_key, int highest_score, slice retval, _) = map_score_to_key.idict_delete_get_max(33);
+    (map_score_to_key, int highest_score, slice retval, _) = map_score_to_key.udict_delete_get_max(32);
     int highest_score_key = retval~load_uint(160);
-    (map_value_to_key, int lowest_value, retval, _) = map_value_to_key.udict_delete_get_min(129);
+    (map_value_to_key, int lowest_value, retval, _) = map_value_to_key.udict_delete_get_min(128);
     int lowest_value_key = retval~load_uint(160);
     (retval, _) = map_key_to_msg_ref~udict_delete_get?(160, lowest_value_key);
     cell msg_to_send = retval~load_ref();
@@ -98,12 +97,12 @@
     send_cell(msg_to_send, value_to_send);
     entries -= 1;
     if (lowest_value_key != highest_score_key) {
-      map_score_to_key~idict_delete?(33, score_to_send);    ;; delete lowest_value_key crsp score
+      map_score_to_key~udict_delete?(32, score_to_send);    ;; delete lowest_value_key crsp score
       (retval, _) = map_key_to_msg_ref~udict_delete_get?(160, highest_score_key);
       msg_to_send = retval~load_ref();
       (value_to_send, score_to_send) = (highest_score_key >> 32, highest_score_key & 0xffffffff);
       send_cell(msg_to_send, value_to_send);
-      map_value_to_key~udict_delete?(129, value_to_send);   ;; delete highest_value_key crsp value
+      map_value_to_key~udict_delete?(128, value_to_send);   ;; delete highest_value_key crsp value
       entries -= 1;
     }
   }
