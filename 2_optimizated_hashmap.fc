@@ -1,0 +1,147 @@
+{-
+  Contract handles internal messages with queries with the following scheme
+  `_# score:uint32 value:(VarUInteger 16) msg:^Cell = MsgInternalBody`, where msg contains correct internal message and store it to contract.
+  Once the number of stored queries reaches 12, contract should send and delete from storage message with the highest score and message with 
+  the lowest value (if it is the same message, it should be sent once). Messages should be sent with mode 0 and coin amount should be equal to 
+  value. All scores and values are guaranteed to be different
+  Note, that in addition to gas-fees, storage fees will be used to determine final score. In particular, storage fee will be calculated like 
+  between each message passes 3 days (259200 seconds). Gas-units price and storage fee params will correspond to current configs of 
+  masterchain: 1000 nanoTON per 65536 bits per second + 500000 nanoTON per 65536 cells per second; gas is 10000 nanoTON per unit.
+
+
+  Example:
+  (message with score x and value y are represented as `(x,y)` )
+
+  incoming message   outcoming messages     
+  (1, 5)           | -
+  (2, 6)           | -
+  (3, 100)         | -
+  (4, 2)           | -
+  (5, 3)           | -
+  (6, 4)           | -
+  (7, 7)           | -
+  (8, 8)           | -
+  (9, 9)           | -
+  (10, 10)         | -
+  (11, 11)         | -
+  (12, 20)         | (12,20); (4,2)
+  (15, 1)          | -
+  (13, 13)         | (15, 1)
+  (14, 14)         | (14,14); (5,3)
+-}
+
+() send_cell (cell to_send, int value) impure {
+  ;; ~dump([911, value]);
+  cell address = begin_cell().store_uint(4, 3)
+    .store_uint(0, 8)
+    .store_uint(0, 256).end_cell();
+
+  cell response_msg = begin_cell()
+    .store_uint(0x18, 6)
+    .store_slice(address.begin_parse())
+    .store_grams(value)
+    .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 0)
+    .store_uint(1, 1)
+    .store_ref(to_send)
+    .end_cell();
+
+  send_raw_message(response_msg, 0);
+}
+
+;; testable
+() recv_internal (slice in_msg_body) {
+  (int score, int value, cell msg) = (in_msg_body~load_uint(32), in_msg_body~load_grams(), in_msg_body~load_ref());
+
+  ;; first run
+  if (slice_bits(get_data().begin_parse()) == 0) {
+    cell dummy_cell = begin_cell().end_cell();
+    slice empty_slice = dummy_cell.begin_parse();
+
+    cell map_score_to_idx = new_dict();
+    map_score_to_idx~idict_set(33, -1, empty_slice);    ;; score int to idx cell slice
+
+    cell map_value_to_idx = new_dict();
+    map_value_to_idx~udict_set(129, 0x1ffffffffffffffffffffffffffffffff, empty_slice);    ;; value int to idx cell slice
+
+    cell map_idx_to_value_to_msg_ref = new_dict();
+    map_idx_to_value_to_msg_ref~udict_set_ref(16, 0, dummy_cell);   ;; idx to cell ref value and 2nd cell ref msg
+
+    cell my_data = begin_cell()
+      .store_uint(0, 16)    ;; last_idx
+      .store_uint(0, 16)    ;; entries stored
+      .store_ref(map_score_to_idx)
+      .store_ref(map_value_to_idx)
+      .store_ref(map_idx_to_value_to_msg_ref)
+      .end_cell();
+
+    set_data(my_data);
+  }
+
+  slice sl = get_data().begin_parse();
+  int curr_idx = sl~load_uint(16) + 1;
+  int entries = sl~load_uint(16) + 1;
+  cell map_score_to_idx = sl~load_ref();
+  cell map_value_to_idx = sl~load_ref();
+  cell map_idx_to_value_to_msg_ref = sl~load_ref();
+
+  slice curr_idx_slice = begin_cell().store_uint(curr_idx, 16).end_cell().begin_parse();
+  
+  map_score_to_idx~idict_set(33, score, curr_idx_slice);
+  map_value_to_idx~udict_set(129, value, curr_idx_slice);
+  cell entry = begin_cell().store_uint(value, 128).store_uint(score, 32).store_ref(msg).end_cell();
+  map_idx_to_value_to_msg_ref~udict_set_ref(16, curr_idx, entry);
+
+  if (entries == 12) {
+    (map_score_to_idx, int highest_score, slice retval, _) = map_score_to_idx.idict_delete_get_max(33);
+    (_, int highest_score_idx) = retval.load_uint(16);
+    (map_value_to_idx, int lowest_value, retval, _) = map_value_to_idx.udict_delete_get_min(129);
+    (_, int lowest_value_idx) = retval.load_uint(16);
+    (retval, _) = map_idx_to_value_to_msg_ref~udict_delete_get?(16, lowest_value_idx);
+    retval = retval~load_ref().begin_parse();
+    (int value_to_send, int score_to_send, cell msg_to_send) = (retval~load_uint(128), retval~load_uint(32), retval~load_ref());
+    send_cell(msg_to_send, value_to_send);
+    entries -= 1;
+    if (lowest_value_idx != highest_score_idx) {
+      map_score_to_idx~idict_delete?(33, score_to_send);    ;; delete lowest_value_idx crsp score
+      (retval, _) = map_idx_to_value_to_msg_ref~udict_delete_get?(16, highest_score_idx);
+      retval = retval~load_ref().begin_parse();
+      (value_to_send, score_to_send, msg_to_send) = (retval~load_uint(128), retval~load_uint(32), retval~load_ref());
+      send_cell(msg_to_send, value_to_send);
+      map_value_to_idx~udict_delete?(129, value_to_send);   ;; delete highest_value_idx crsp value
+      entries -= 1;
+    }
+  }
+  ;; serialize
+  cell my_data = begin_cell()
+    .store_uint(curr_idx, 16)    ;; last_idx
+    .store_uint(entries, 16)    ;; entries stored
+    .store_ref(map_score_to_idx)
+    .store_ref(map_value_to_idx)
+    .store_ref(map_idx_to_value_to_msg_ref)
+    .end_cell();
+  set_data(my_data);
+}
+
+;; () holla (int score, int value) impure {
+;;   ;; (int score, int value, cell msg) = (in_msg_body~load_uint(32), in_msg_body~load_grams(), in_msg_body~load_ref());
+
+;; }
+
+(int, int) fme (int a, int b) method_id {
+  ;; holla(1, 5);
+  ;; holla(2, 6);
+  ;; holla(3, 100);
+  ;; holla(4, 2);
+  ;; holla(5, 3);
+  ;; holla(6, 4);
+  ;; holla(7, 7);
+  ;; holla(8, 8);
+  ;; holla(9, 9);
+  ;; holla(10, 10);
+  ;; holla(11, 11);
+  ;; holla(12, 20);
+  ;; holla(15, 1);
+  ;; holla(13, 13);
+  ;; holla(14, 14);
+  return (3, 4);
+}
