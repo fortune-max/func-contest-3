@@ -31,7 +31,7 @@
 -}
 
 () send_cell (cell to_send, int value) impure {
-  ;; ~dump([911, value]);
+  ~dump([911, value]);
   cell address = begin_cell().store_uint(4, 3)
     .store_uint(0, 8)
     .store_uint(0, 256).end_cell();
@@ -51,12 +51,18 @@
 ;; testable
 () recv_internal (slice in_msg_body) {
   (int score, int value, cell msg) = (in_msg_body~load_uint(32), in_msg_body~load_grams(), in_msg_body~load_ref());
-  
-  cell dummy_cell = begin_cell().end_cell();
-  slice empty_slice = dummy_cell.begin_parse();
 
+  
+}
+
+() holla (int score, int value) impure {
+  ;; (int score, int value, cell msg) = (in_msg_body~load_uint(32), in_msg_body~load_grams(), in_msg_body~load_ref());
+  cell msg = begin_cell().end_cell();
   ;; first run
   if (slice_bits(get_data().begin_parse()) == 0) {
+    cell dummy_cell = begin_cell().end_cell();
+    slice empty_slice = dummy_cell.begin_parse();
+    
     cell map_score_to_key = new_dict();
     map_score_to_key~idict_set(33, -1, empty_slice);    ;; score int to idx cell slice    ;; TODO rm dummy dict sets
 
@@ -64,7 +70,7 @@
     map_value_to_key~udict_set(129, 0x1ffffffffffffffffffffffffffffffff, empty_slice);    ;; value int to idx cell slice
 
     cell map_key_to_msg_ref = new_dict();
-    map_key_to_msg_ref~udict_set_ref(16, 0, dummy_cell);   ;; idx to cell ref value and 2nd cell ref msg
+    map_key_to_msg_ref~udict_set_ref(160, 0, dummy_cell);   ;; idx to cell ref value and 2nd cell ref msg
 
     cell my_data = begin_cell()
       .store_uint(0, 16)    ;; entries stored
@@ -82,29 +88,28 @@
   cell map_key_to_msg_ref = sl~load_ref();
 
   int key = (value << 32) | score;
-  slice key_slice = begin_cell().store_uint(key, 144).end_cell().begin_parse();
-
+  slice key_slice = begin_cell().store_uint(key, 160).end_cell().begin_parse();
   map_score_to_key~idict_set(33, score, key_slice);
   map_value_to_key~udict_set(129, value, key_slice);
-  map_key_to_msg_ref~udict_set_ref(144, key, msg);
-
+  map_key_to_msg_ref~udict_set_ref(160, key, msg);
+  
   if (entries == 12) {
     (map_score_to_key, int highest_score, slice retval, _) = map_score_to_key.idict_delete_get_max(33);
-    int highest_score_key = retval~load_uint(144);
+    int highest_score_key = retval~load_uint(160);
     (map_value_to_key, int lowest_value, retval, _) = map_value_to_key.udict_delete_get_min(129);
-    int lowest_value_key = retval~load_uint(144);
-    (retval, _) = map_key_to_msg_ref~udict_delete?(144, lowest_value_key);
-    (_, cell msg_to_send) = retval~load_ref().begin_parse().load_ref();
+    int lowest_value_key = retval~load_uint(160);
+    (retval, _) = map_key_to_msg_ref~udict_delete_get?(160, lowest_value_key);
+    cell msg_to_send = retval~load_ref();
     (int value_to_send, int score_to_send) = (lowest_value_key >> 32, lowest_value_key & 0xffffffff);
     send_cell(msg_to_send, value_to_send);
     entries -= 1;
     if (lowest_value_key != highest_score_key) {
-      map_score_to_key~idict_delete?(33, score_to_send);    ;; delete lowest_value_idx crsp score
-      (retval, _) = map_key_to_msg_ref~udict_delete_get?(144, highest_score_key);
-      (_, msg_to_send) = retval~load_ref().begin_parse().load_ref();
-      (value_to_send, score_to_send) = (lowest_value_key >> 32, lowest_value_key & 0xffffffff);
+      map_score_to_key~idict_delete?(33, score_to_send);    ;; delete lowest_value_key crsp score
+      (retval, _) = map_key_to_msg_ref~udict_delete_get?(160, highest_score_key);
+      msg_to_send = retval~load_ref();
+      (value_to_send, score_to_send) = (highest_score_key >> 32, highest_score_key & 0xffffffff);
       send_cell(msg_to_send, value_to_send);
-      map_value_to_key~udict_delete?(129, value_to_send);   ;; delete highest_value_idx crsp value
+      map_value_to_key~udict_delete?(129, value_to_send);   ;; delete highest_value_key crsp value
       entries -= 1;
     }
   }
@@ -118,26 +123,21 @@
   set_data(my_data);
 }
 
-;; () holla (int score, int value) impure {
-;;   ;; (int score, int value, cell msg) = (in_msg_body~load_uint(32), in_msg_body~load_grams(), in_msg_body~load_ref());
-
-;; }
-
 (int, int) fme (int a, int b) method_id {
-  ;; holla(1, 5);
-  ;; holla(2, 6);
-  ;; holla(3, 100);
-  ;; holla(4, 2);
-  ;; holla(5, 3);
-  ;; holla(6, 4);
-  ;; holla(7, 7);
-  ;; holla(8, 8);
-  ;; holla(9, 9);
-  ;; holla(10, 10);
-  ;; holla(11, 11);
-  ;; holla(12, 20);
-  ;; holla(15, 1);
-  ;; holla(13, 13);
-  ;; holla(14, 14);
+  holla(1, 5);
+  holla(2, 6);
+  holla(3, 100);
+  holla(4, 2);
+  holla(5, 3);
+  holla(6, 4);
+  holla(7, 7);
+  holla(8, 8);
+  holla(9, 9);
+  holla(10, 10);
+  holla(11, 11);
+  holla(12, 20);
+  holla(15, 1);
+  holla(13, 13);
+  holla(14, 14);
   return (3, 4);
 }
