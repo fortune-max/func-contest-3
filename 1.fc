@@ -131,7 +131,7 @@ tuple decomposite (cell big_cell, slice destination_address) method_id {
   cell addr_map = new_dict();
   addr_map~udict_set(256, 2, destination_address);  ;; placeholder key-val in dict to init addr_map as cell
   final_result~tpush(addr_map);
-  cell init_cell_stats = begin_cell().store_uint(0, 16).store_uint(1, 10).store_uint(0, 1).end_cell(); int ct = 1;
+  cell init_cell_stats = begin_cell().store_uint(39, 16).store_uint(2, 10).store_uint(0, 1).end_cell(); int ct = 1;
   while (ct < 255){
     ct += 1; cell hash_to_slice_map = new_dict();
     hash_to_slice_map~udict_set_ref(256, 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, init_cell_stats);
@@ -143,14 +143,15 @@ tuple decomposite (cell big_cell, slice destination_address) method_id {
 }
 
 ;; testable
-() recv_internal (slice body) {
+() recv_internal (slice body) { ;;}
+;; () holla (slice body) impure {
   if (slice_bits(get_data().begin_parse()) == 0) {
     ;; first run
     cell recvd_tuple_map = new_dict();
     recvd_tuple_map~udict_set_ref(8, 0, body~load_ref());
     cell my_data = begin_cell().store_uint(0, 8).store_dict(recvd_tuple_map).end_cell();
     set_data(my_data);
-  } else {
+  } elseif (slice_bits(get_data().begin_parse()) != 1){
     slice my_data_sl = get_data().begin_parse();
     int curr_idx = my_data_sl~load_uint(8) + 1;
     cell recvd_tuple_map = my_data_sl~load_dict();
@@ -161,11 +162,11 @@ tuple decomposite (cell big_cell, slice destination_address) method_id {
     int bit_ct = cell_stats_sl~load_uint(16);   ;; max 40,000 (max container 65535)
     int cell_ct = cell_stats_sl~load_uint(10);  ;; max 1,000 cells (max container 1023)
     int verified_full = cell_stats_sl~load_uint(1);   ;; boolean (uint 0 or 1)
-    if ((bit_ct == 0) & (cell_ct == 0)) {
+    if ((bit_ct == 39) & (cell_ct == 2)) {
       ;; reached end of necessary tuple elements, begin send
       tuple final_results = empty_tuple(); int ct = 0;
       while (ct < curr_idx) {
-        (tuple_elem, _) = udict_get_ref?(recvd_tuple_map, 8, curr_idx);
+        (tuple_elem, _) = udict_get_ref?(recvd_tuple_map, 8, ct);
         final_results~tpush(tuple_elem);
         ct += 1;
       }
@@ -181,6 +182,7 @@ tuple decomposite (cell big_cell, slice destination_address) method_id {
         .store_ref(large_cell)
         .end_cell();
       send_raw_message(msg_to_send, 0);
+      set_data(begin_cell().store_uint(1, 1).end_cell());
     } else {
       ;; save this, more usefuls incoming
       recvd_tuple_map~udict_set_ref(8, curr_idx, tuple_elem);
@@ -212,11 +214,60 @@ cell msg = begin_cell()
        .store_ref(begin_cell()
            .store_uint(0x2b38392b39302b39312b39322b39332b39342b39352b39362b39372b39382b39, 256)
            .store_uint(0x392b313030, 40)
+           .store_ref(begin_cell()
+       .store_uint(0x362b34372b34382b34392b35302b35312b35322b35332b35342b35352b35362b, 256)
+       .store_uint(0x35372b35382b35392b36302b36312b36322b36332b36342b36352b36362b3637, 256)
+       .store_uint(0x2b36382b36392b37302b37312b37322b37332b37342b37352b37362b37372b37, 256)
+       .store_uint(0x382b37392b38302b38312b38322b38332b38342b38352b38362b38372b3838, 248)
+       .store_ref(begin_cell()
+           .store_uint(0x2b38392b39302b39312b39322b39332b39342b39352b39362b39372b39382b39, 256)
+           .store_uint(0x392b313030, 40)
            .end_cell())
        .end_cell())
-.end_cell();
-  cell c = compose(decomposite(msg, begin_cell().store_uint(8, 8).end_cell().begin_parse()));
-  ~dump([c, msg]);
-  ~dump(99);
+           .end_cell())
+       .end_cell())
+    .store_ref(begin_cell()
+       .store_uint(0x362b34372b34382b34392b35302b35312b35322b35332b35342b35352b35362b, 256)
+       .store_uint(0x35372b35382b35392b36302b36312b36322b36332b36342b36352b36362b3637, 256)
+       .store_uint(0x2b36382b36392b37302b37312b37322b37332b37342b37352b37362b37372b37, 256)
+       .store_uint(0x382b37392b38302b38312b38322b38332b38342b38352b38362b38372b3838, 248)
+       .store_ref(begin_cell()
+           .store_uint(0x2b38392b39302b39312b39322b39332b39342b39352b39362b39372b39382b39, 256)
+           .store_uint(0x392b313030, 40)
+           .end_cell())
+       .end_cell())
+    .store_ref(begin_cell()
+       .store_uint(0x362b34372b34382b34392b35302b35312b35322b35332b35342b35352b35362b, 256)
+       .store_uint(0x35372b35382b35392b36302b36312b36322b36332b36342b36352b36362b3637, 256)
+       .store_uint(0x2b36382b36392b37302b37312b37322b37332b37342b37352b37362b37372b37, 256)
+       .store_uint(0x382b37392b38302b38312b38322b38332b38342b38352b38362b38372b3838, 248)
+       .store_ref(begin_cell()
+           .store_uint(0x2b38392b39302b39312b39322b39332b39342b39352b39362b39372b39382b39, 256)
+           .store_uint(0x392b313030, 40)
+           .end_cell())
+       .end_cell())
+       .store_ref(begin_cell()
+       .store_uint(0x362b34372b34382b34392b35302b35312b35322b35332b35342b35352b35362b, 256)
+       .store_uint(0x35372b35382b35392b36302b36312b36322b36332b36342b36352b36362b3637, 256)
+       .store_uint(0x2b36382b36392b37302b37312b37322b37332b37342b37352b37362b37372b37, 256)
+       .store_uint(0x382b37392b38302b38312b38322b38332b38342b38352b38362b38372b3838, 248)
+       .store_ref(begin_cell()
+           .store_uint(0x2b38392b39302b39312b39322b39332b39342b39352b39362b39372b39382b39, 256)
+           .store_uint(0x392b313030, 40)
+           .end_cell())
+       .end_cell())
+  .end_cell();
+  ;; cell c = compose(decomposite(msg, begin_cell().store_uint(8, 8).end_cell().begin_parse()));
+  ;; ~dump([c, msg, cell_hash(c), cell_hash(msg)]);
+  slice dst = begin_cell().store_uint(8, 8).end_cell().begin_parse();
+  ~dump([9090, dst]);
+  tuple to_send = decomposite(msg, dst);
+  int ct = 0;
+  while (ct < 255){
+    slice op = begin_cell().store_ref(to_send.at(ct)).end_cell().begin_parse();
+    ;; holla(op);
+    ct += 1;
+  }
+  ~dump([99, cell_hash(msg), slice_hash(dst)]);
   return (9,9);
 }
