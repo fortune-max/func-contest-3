@@ -19,7 +19,7 @@ tuple store_address_to_tupleidx_and_hash(builder curr_address, int hash_key, int
   slice curr_address_sl = curr_address.end_cell().begin_parse();
   int addr_int_rep = curr_address_sl~load_uint(slice_bits(curr_address_sl));
   cell addr_map = final_result.at(0);
-  addr_map~udict_set(256, addr_int_rep, begin_cell().store_int(tuple_idx, 8).store_int(hash_key, 256).end_cell().begin_parse());
+  addr_map~udict_set(256, addr_int_rep, begin_cell().store_uint(tuple_idx, 8).store_uint(hash_key, 256).end_cell().begin_parse());
   tuple updated_tuple = empty_tuple(); updated_tuple~tpush(addr_map); int ct = 1;
   while (ct < 255){
     updated_tuple~tpush(final_result.at(ct)); ct += 1;
@@ -98,7 +98,7 @@ tuple store_address_to_tupleidx_and_hash(builder curr_address, int hash_key, int
 }
 
 ;; testable
-tuple decomposite (cell big_cell, slice destination_address) method_id {
+tuple decomposite (cell big_cell, slice destination_address) impure method_id {
   tuple final_result = empty_tuple();
   cell addr_map = new_dict();
   addr_map~udict_set(256, 2, destination_address);  ;; placeholder key-val in dict to init addr_map as cell
@@ -115,16 +115,23 @@ tuple decomposite (cell big_cell, slice destination_address) method_id {
 }
 
 (int, int) fme (int a, int b) method_id {
-  ;; cell a = begin_cell().store_uint(8, 8).store_uint(0, 8).store_ref(begin_cell().store_uint(8, 8).end_cell()).end_cell();
-  ;; slice sl = a.begin_parse();
-  ;; ~dump(sl);
-  ;; ~dump(sl~load_bits(16));
-  ;; ~dump(string_hash(sl));
-  ;; ~dump(sl);
-  ;; ~dump([a.begin_parse().load_uint(16)]);
-  tuple a = empty_tuple();
-  a~tpush(10); a~tpush(15); a~tpush(20); a~tpush(25);
-  ~dump(a);
+  cell msg = begin_cell().store_uint(57, 8).store_ref( ;; 9
+    begin_cell().store_uint(43, 8).store_ref(   ;; +
+      begin_cell().store_uint(40, 8).store_ref(   ;; (
+        begin_cell().store_uint(51, 8).store_ref( ;; 3
+          begin_cell().store_uint(45, 8).store_ref( ;; -
+            begin_cell().store_uint(55, 8).store_ref(   ;; 7
+              begin_cell().store_uint(41, 8).store_ref(   ;; )
+                begin_cell().store_uint(42, 8).store_ref(   ;; *
+                  begin_cell().store_uint(53, 8).end_cell()   ;; 5
+                ).end_cell()
+              ).end_cell()
+            ).end_cell()
+          ).end_cell()
+        ).end_cell()
+      ).end_cell()
+    ).end_cell()
+  ).end_cell();
   
   return (9,9);
 }
