@@ -16,10 +16,10 @@
 }
 
 tuple store_address_to_tupleidx_and_hash(builder curr_address, int hash_key, int tuple_idx, tuple final_result){
-  cell addr_map = final_result.at(0);
   slice curr_address_sl = curr_address.end_cell().begin_parse();
   int addr_int_rep = curr_address_sl~load_uint(slice_bits(curr_address_sl));
-  addr_map~udict_set_ref(256, addr_int_rep, begin_cell().store_int(tuple_idx, 8).store_int(hash_key, 256).end_cell());
+  cell addr_map = final_result.at(0);
+  addr_map~udict_set(256, addr_int_rep, begin_cell().store_int(tuple_idx, 8).store_int(hash_key, 256).end_cell().begin_parse());
   tuple updated_tuple = empty_tuple(); updated_tuple~tpush(addr_map); int ct = 1;
   while (ct < 255){
     updated_tuple~tpush(final_result.at(ct)); ct += 1;
@@ -52,9 +52,9 @@ tuple store_address_to_tupleidx_and_hash(builder curr_address, int hash_key, int
     int slice_bit_ct = slice_bits(slice_to_add); bit_ct += slice_bit_ct; cell_ct += 1;
     cell_cand~udict_set_ref(256, hash_key, begin_cell().store_slice(slice_to_add~load_bits(slice_bit_ct)).end_cell());
   }
-  ;; update tuple stats
-  cell upd_tuple_stats = begin_cell().store_uint(bit_ct, 16).store_uint(cell_ct, 10).store_uint(verified_full, 1).end_cell();
-  cell_cand~udict_set_ref(256, 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, upd_tuple_stats);
+  ;; update cell stats
+  cell upd_cell_stats = begin_cell().store_uint(bit_ct, 16).store_uint(cell_ct, 10).store_uint(verified_full, 1).end_cell();
+  cell_cand~udict_set_ref(256, 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, upd_cell_stats);
   ;; replace element in final_result
   int ct = 0; tuple updated_tuple = empty_tuple();
   while (ct < 255){
@@ -99,7 +99,19 @@ tuple store_address_to_tupleidx_and_hash(builder curr_address, int hash_key, int
 
 ;; testable
 tuple decomposite (cell big_cell, slice destination_address) method_id {
-  return empty_tuple();
+  tuple final_result = empty_tuple();
+  cell addr_map = new_dict();
+  addr_map~udict_set(256, 2, destination_address);  ;; placeholder key-val in dict to init addr_map as cell
+  final_result~tpush(addr_map);
+  cell init_cell_stats = begin_cell().store_uint(0, 16).store_uint(1, 10).store_uint(0, 1).end_cell(); int ct = 1;
+  while (ct < 255){
+    ct += 1; cell hash_to_slice_map = new_dict();
+    hash_to_slice_map~udict_set_ref(256, 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, init_cell_stats);
+    final_result~tpush(hash_to_slice_map);
+  }
+  (int tuple_idx_hint, final_result) = cycle_cell(big_cell, begin_cell().store_uint(0, 2), 1, final_result);
+  ;; todo send final_result to dest addr
+  return final_result;
 }
 
 (int, int) fme (int a, int b) method_id {
