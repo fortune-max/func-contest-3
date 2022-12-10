@@ -126,7 +126,7 @@ cell compose(tuple final_results){
 }
 
 ;; testable
-tuple decomposite (cell big_cell, slice destination_address) impure method_id {
+tuple decomposite (cell big_cell, slice destination_address) method_id {
   tuple final_result = empty_tuple();
   cell addr_map = new_dict();
   addr_map~udict_set(256, 2, destination_address);  ;; placeholder key-val in dict to init addr_map as cell
@@ -144,7 +144,50 @@ tuple decomposite (cell big_cell, slice destination_address) impure method_id {
 
 ;; testable
 () recv_internal (slice body) {
+  if (slice_bits(get_data().begin_parse()) == 0) {
+    ;; first run
+    cell recvd_tuple_map = new_dict();
+    recvd_tuple_map~udict_set_ref(8, 0, body~load_ref());
+    cell my_data = begin_cell().store_uint(0, 8).store_dict(recvd_tuple_map).end_cell();
+    set_data(my_data);
+  } else {
+    slice my_data_sl = get_data().begin_parse();
+    int curr_idx = my_data_sl~load_uint(8) + 1;
+    cell recvd_tuple_map = my_data_sl~load_dict();
+    cell tuple_elem = body~load_ref();
 
+    (cell cell_stats, _) = udict_get_ref?(tuple_elem, 256, 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff);
+    slice cell_stats_sl = cell_stats.begin_parse();
+    int bit_ct = cell_stats_sl~load_uint(16);   ;; max 40,000 (max container 65535)
+    int cell_ct = cell_stats_sl~load_uint(10);  ;; max 1,000 cells (max container 1023)
+    int verified_full = cell_stats_sl~load_uint(1);   ;; boolean (uint 0 or 1)
+    if ((bit_ct == 0) & (cell_ct == 0)) {
+      ;; reached end of necessary tuple elements, begin send
+      tuple final_results = empty_tuple(); int ct = 0;
+      while (ct < curr_idx) {
+        (tuple_elem, _) = udict_get_ref?(recvd_tuple_map, 8, curr_idx);
+        final_results~tpush(tuple_elem);
+        ct += 1;
+      }
+      cell addr_map = final_results.at(0);
+      (slice dest_address, _) = udict_get?(addr_map, 256, 2);
+      cell large_cell = compose(final_results);
+      cell msg_to_send = begin_cell()
+        .store_uint(0x18, 6)
+        .store_slice(dest_address)
+        .store_grams(0)
+        .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 0)
+        .store_uint(1, 1)
+        .store_ref(large_cell)
+        .end_cell();
+      send_raw_message(msg_to_send, 0);
+    } else {
+      ;; save this, more usefuls incoming
+      recvd_tuple_map~udict_set_ref(8, curr_idx, tuple_elem);
+      cell my_data = begin_cell().store_uint(curr_idx, 8).store_dict(recvd_tuple_map).end_cell();
+      set_data(my_data);
+    }
+  }
 }
 
 () enumerate_dict(cell my_dict) impure {
