@@ -11,10 +11,6 @@
   Note, that initial state of contract storage will be empty cell: cell with zero bits and refs.
 -}
 
-;; testable
-() recv_internal (slice body) {
-}
-
 tuple store_address_to_tupleidx_and_hash(builder curr_address, int hash_key, int tuple_idx, tuple final_result){
   slice curr_address_sl = curr_address.end_cell().begin_parse();
   int addr_int_rep = curr_address_sl~load_uint(slice_bits(curr_address_sl));
@@ -97,6 +93,35 @@ tuple store_address_to_tupleidx_and_hash(builder curr_address, int hash_key, int
   return (tuple_idx_hint, final_result);
 }
 
+(cell, int) cycle_cell_compose(builder curr_address, tuple final_result) {
+  cell addr_map = final_result.at(0);
+  cell curr_cell = new_dict();
+  ;; check if I exist
+  slice curr_address_sl = curr_address.end_cell().begin_parse();
+  int addr_int_rep = curr_address_sl~load_uint(slice_bits(curr_address_sl));
+  (slice hash_tupleidx_info, int curr_exists) = udict_get?(addr_map, 256, addr_int_rep);
+  if (curr_exists) {
+    int tuple_idx = hash_tupleidx_info~load_uint(8);
+    int hash_key = hash_tupleidx_info~load_uint(256);
+    cell slice_hash_to_cell_map = final_result.at(tuple_idx);
+    (curr_cell, _) = udict_get_ref?(slice_hash_to_cell_map, 256, hash_key);
+    builder curr_cell_builder = begin_cell().store_slice(curr_cell.begin_parse());
+    int ct = 0;
+    while (ct < 4) {
+      (cell child, int child_exists) = cycle_cell_compose(curr_address.store_uint(ct, 2), final_result);
+      if (child_exists){ curr_cell_builder.store_ref(child); ct -= 1; }
+      else { ct = 4; }
+    }
+    curr_cell = curr_cell_builder.end_cell();
+  }
+  return (curr_cell, curr_exists);
+}
+
+cell compose(tuple final_results){
+  (cell large_cell, _) = cycle_cell_compose(begin_cell().store_uint(0, 2), final_results);
+  return large_cell;
+}
+
 ;; testable
 tuple decomposite (cell big_cell, slice destination_address) impure method_id {
   tuple final_result = empty_tuple();
@@ -109,9 +134,22 @@ tuple decomposite (cell big_cell, slice destination_address) impure method_id {
     hash_to_slice_map~udict_set_ref(256, 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, init_cell_stats);
     final_result~tpush(hash_to_slice_map);
   }
-  (int tuple_idx_hint, final_result) = cycle_cell(big_cell, begin_cell().store_uint(0, 2), 1, final_result);
+  (int tuple_idx_hint, final_result) = cycle_cell(big_cell, begin_cell().store_uint(3, 2), 1, final_result);
   ;; todo send final_result to dest addr
   return final_result;
+}
+
+;; testable
+() recv_internal (slice body) {
+
+}
+
+() enumerate_dict(cell my_dict) impure {
+  int start_key = 0; int success = -1;
+  while (success){
+    (start_key, slice content, success) = udict_get_next?(my_dict, 256, start_key);
+    ~dump([start_key, content]);
+  }
 }
 
 (int, int) fme (int a, int b) method_id {
@@ -132,6 +170,18 @@ tuple decomposite (cell big_cell, slice destination_address) impure method_id {
       ).end_cell()
     ).end_cell()
   ).end_cell();
-  
+  tuple results = decomposite(msg, begin_cell().store_uint(8, 8).end_cell().begin_parse());
+  cell fme_dict = new_dict();
+  slice dummy_slice = begin_cell().store_uint(8, 8).end_cell().begin_parse();
+  ~dump(fme_dict);
+  fme_dict~udict_set(256, 201, dummy_slice);
+  ~dump(fme_dict);
+  fme_dict~udict_set(256, 302, dummy_slice);
+  enumerate_dict(fme_dict);
+  ~dump(909);
+  enumerate_dict(results.at(0));
+  cell c = compose(results);
+  ~dump(c);
+  ~dump(99);
   return (9,9);
 }
