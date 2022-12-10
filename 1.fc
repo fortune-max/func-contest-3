@@ -109,8 +109,11 @@ tuple store_address_to_tupleidx_and_hash(builder curr_address, int hash_key, int
     int ct = 0;
     while (ct < 4) {
       (cell child, int child_exists) = cycle_cell_compose(curr_address.store_uint(ct, 2), final_result);
-      if (child_exists){ curr_cell_builder.store_ref(child); ct -= 1; }
-      else { ct = 4; }
+      if (child_exists){
+        curr_cell_builder = curr_cell_builder.store_ref(child); ct += 1;
+      } else {
+        ct = 4;
+      }
     }
     curr_cell = curr_cell_builder.end_cell();
   }
@@ -118,7 +121,7 @@ tuple store_address_to_tupleidx_and_hash(builder curr_address, int hash_key, int
 }
 
 cell compose(tuple final_results){
-  (cell large_cell, _) = cycle_cell_compose(begin_cell().store_uint(0, 2), final_results);
+  (cell large_cell, _) = cycle_cell_compose(begin_cell().store_uint(3, 2), final_results);
   return large_cell;
 }
 
@@ -153,35 +156,24 @@ tuple decomposite (cell big_cell, slice destination_address) impure method_id {
 }
 
 (int, int) fme (int a, int b) method_id {
-  cell msg = begin_cell().store_uint(57, 8).store_ref( ;; 9
-    begin_cell().store_uint(43, 8).store_ref(   ;; +
-      begin_cell().store_uint(40, 8).store_ref(   ;; (
-        begin_cell().store_uint(51, 8).store_ref( ;; 3
-          begin_cell().store_uint(45, 8).store_ref( ;; -
-            begin_cell().store_uint(55, 8).store_ref(   ;; 7
-              begin_cell().store_uint(41, 8).store_ref(   ;; )
-                begin_cell().store_uint(42, 8).store_ref(   ;; *
-                  begin_cell().store_uint(53, 8).end_cell()   ;; 5
-                ).end_cell()
-              ).end_cell()
-            ).end_cell()
-          ).end_cell()
-        ).end_cell()
-      ).end_cell()
-    ).end_cell()
-  ).end_cell();
-  tuple results = decomposite(msg, begin_cell().store_uint(8, 8).end_cell().begin_parse());
-  cell fme_dict = new_dict();
-  slice dummy_slice = begin_cell().store_uint(8, 8).end_cell().begin_parse();
-  ~dump(fme_dict);
-  fme_dict~udict_set(256, 201, dummy_slice);
-  ~dump(fme_dict);
-  fme_dict~udict_set(256, 302, dummy_slice);
-  enumerate_dict(fme_dict);
-  ~dump(909);
-  enumerate_dict(results.at(0));
-  cell c = compose(results);
-  ~dump(c);
+cell msg = begin_cell()
+    .store_uint(0x312b322b332b342b352b362b372b382b392b31302b31312b31322b31332b3134, 256)
+    .store_uint(0x2b31352b31362b31372b31382b31392b32302b32312b32322b32332b32342b32, 256)
+    .store_uint(0x352b32362b32372b32382b32392b33302b33312b33322b33332b33342b33352b, 256)
+    .store_uint(0x33362b33372b33382b33392b34302b34312b34322b34332b34342b34352b34, 248)
+    .store_ref(begin_cell()
+       .store_uint(0x362b34372b34382b34392b35302b35312b35322b35332b35342b35352b35362b, 256)
+       .store_uint(0x35372b35382b35392b36302b36312b36322b36332b36342b36352b36362b3637, 256)
+       .store_uint(0x2b36382b36392b37302b37312b37322b37332b37342b37352b37362b37372b37, 256)
+       .store_uint(0x382b37392b38302b38312b38322b38332b38342b38352b38362b38372b3838, 248)
+       .store_ref(begin_cell()
+           .store_uint(0x2b38392b39302b39312b39322b39332b39342b39352b39362b39372b39382b39, 256)
+           .store_uint(0x392b313030, 40)
+           .end_cell())
+       .end_cell())
+.end_cell();
+  cell c = compose(decomposite(msg, begin_cell().store_uint(8, 8).end_cell().begin_parse()));
+  ~dump([c, msg]);
   ~dump(99);
   return (9,9);
 }
