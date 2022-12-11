@@ -31,21 +31,22 @@ tuple store_address_to_tupleidx_and_hash(builder curr_address, int hash_key, int
   int cell_ct = cell_stats_sl~load_uint(10);  ;; max 1,000 cells (max container 1023)
   int verified_full = cell_stats_sl~load_uint(1);   ;; boolean (uint 0 or 1)
   int tuple_idx = tuple_idx_hint;
-  if ((bit_ct >= 37500) | (cell_ct >= 995)) {
+  (cell_ct, bit_ct, _) = compute_data_size(cell_cand, 1000);
+  if ((bit_ct >= 30000) | (cell_ct >= 800)) {
     ;; this cell probably near full, confirm, then switch
     (int compute_cell_ct, int compute_bits_ct, int compute_ref_ct) = compute_data_size(cell_cand, 1000);
-    if ((compute_bits_ct >= 37500) | (compute_cell_ct >= 995)){
+    if ((compute_bits_ct >= 30000) | (compute_cell_ct >= 800)){
       ;; this cell is definitely full, switch
       verified_full = 1; tuple_idx_hint += 1;
       (tuple_idx_hint, final_result) = store_key_to_slice(hash_key, slice_to_add, tuple_idx_hint, final_result);
     } else { 
       ;; we ok bruh, do your thing
-      int slice_bit_ct = slice_bits(slice_to_add); bit_ct += slice_bit_ct; cell_ct += 1;
+      int slice_bit_ct = slice_bits(slice_to_add); bit_ct += slice_bit_ct; cell_ct += 3;
       cell_cand~udict_set_ref(256, hash_key, begin_cell().store_slice(slice_to_add~load_bits(slice_bit_ct)).end_cell());
     }
   } else {
     ;; this cell is definitely able to take new cell, no need to check
-    int slice_bit_ct = slice_bits(slice_to_add); bit_ct += slice_bit_ct; cell_ct += 1;
+    int slice_bit_ct = slice_bits(slice_to_add); bit_ct += slice_bit_ct; cell_ct += 3;
     cell_cand~udict_set_ref(256, hash_key, begin_cell().store_slice(slice_to_add~load_bits(slice_bit_ct)).end_cell());
   }
   ;; update cell stats
@@ -64,8 +65,8 @@ tuple store_address_to_tupleidx_and_hash(builder curr_address, int hash_key, int
 }
 
 (int, tuple) add_to_tuple(slice slice_to_add, builder curr_address, int tuple_idx_hint, tuple final_result) {
-  int slice_bit_ct = slice_bits(slice_to_add); int remainder = slice_bit_ct % 8; slice slice_to_hash = slice_to_add;
-  int hash_key = -1;
+  int slice_bit_ct = slice_bits(slice_to_add); slice_to_add = slice_to_add~load_bits(slice_bit_ct);  ;; remove refs
+  int remainder = slice_bit_ct % 8; slice slice_to_hash = slice_to_add; int hash_key = -1;
   if (remainder){
     int MOD = 57896044618658097711785492504343953926634992332820282019728792003956564819949;
     slice slice_prfx = begin_cell().store_uint(0, 8 - remainder).store_slice(slice_to_hash~load_bits(remainder)).end_cell().begin_parse();
@@ -78,7 +79,7 @@ tuple store_address_to_tupleidx_and_hash(builder curr_address, int hash_key, int
 }
 
 (int, tuple) cycle_cell(cell curr_cell, builder curr_address, int tuple_idx_hint, tuple final_result){   ;; initialize final_result with stats
-  slice curr_cell_slice = curr_cell.begin_parse();    ;; use slice_hash, pad to 8-bit, no refs
+  slice curr_cell_slice = curr_cell.begin_parse();    ;; use slice_hash, pad to 8-bit, todo!!! rm refs no refs (now done)
   (tuple_idx_hint, final_result) = add_to_tuple(curr_cell_slice, curr_address, tuple_idx_hint, final_result);
   int children_count = slice_refs(curr_cell_slice);
   if (children_count > 0){
@@ -139,6 +140,14 @@ tuple decomposite (cell big_cell, slice destination_address) method_id {
     final_result~tpush(hash_to_slice_map);
   }
   (int tuple_idx_hint, final_result) = cycle_cell(big_cell, begin_cell().store_uint(3, 2), 1, final_result);
+  ;; int ct = 0;
+  ;; while (ct < 255) {
+  ;;   cell tuple_elem = final_result.at(ct);
+  ;;   (int compute_cell_ct, int compute_bits_ct, int compute_ref_ct) = compute_data_size(tuple_elem, 1000);
+  ;;   while (compute_cell_ct >= 1000) { ~dump(99); }
+  ;;   if (compute_bits_ct) { ~dump([22, ct, compute_bits_ct]); }
+  ;;   ct += 1;
+  ;; }
   return final_result;
 }
 
@@ -268,11 +277,12 @@ cell msg = begin_cell()
   .end_cell();
   slice dst = begin_cell().store_uint(8, 8).end_cell().begin_parse();
   tuple to_send = decomposite(msg, dst);
+  ~dump(to_send.at(0));
   ;; enumerate_dict(to_send.at(2));
   ;; ~dump([138, udict_get?(to_send.at(1), 256, 69675177239051095405772812861709225598059686123525973174639614789520862312481)]);
   ;; cell test = compose(to_send);
   ;; int ct = 0; while (ct < 255){ holla(to_send.at(ct).begin_parse()); ct += 1; }
-  ~dump([99, cell_hash(msg), msg, msg.begin_parse()]);
+  ~dump([99, cell_hash(msg), msg, msg.begin_parse(), [compute_data_size(msg, 20000)]]);
   ;; ~dump([199, cell_hash(test), test, test.begin_parse()]);
   ~dump(293);
   return (9,9);
