@@ -129,7 +129,8 @@ cell compose(tuple final_results){
 tuple decomposite (cell big_cell, slice destination_address) method_id {
   tuple final_result = empty_tuple();
   cell addr_map = new_dict();
-  addr_map~udict_set(256, 2, destination_address);  ;; placeholder key-val in dict to init addr_map as cell
+  addr_map~udict_set(256, 1, begin_cell().store_uint(cell_hash(big_cell), 256).end_cell().begin_parse());  ;; error chk for verifying large cell exact sent
+  addr_map~udict_set(256, 2, destination_address);  ;; destination address to retrieve later when sending
   final_result~tpush(addr_map);
   cell init_cell_stats = begin_cell().store_uint(39, 16).store_uint(2, 10).store_uint(0, 1).end_cell(); int ct = 1;
   while (ct < 255){
@@ -138,41 +139,48 @@ tuple decomposite (cell big_cell, slice destination_address) method_id {
     final_result~tpush(hash_to_slice_map);
   }
   (int tuple_idx_hint, final_result) = cycle_cell(big_cell, begin_cell().store_uint(3, 2), 1, final_result);
-  ;; todo send final_result to dest addr
   return final_result;
 }
 
 ;; testable
 () recv_internal (slice body) { ;;}
 ;; () holla (slice body) impure {
-  if (slice_bits(get_data().begin_parse()) == 0) {
+  slice my_data_sl = get_data().begin_parse();
+  int operation_mode = slice_bits(my_data_sl);
+  if (operation_mode == 0) {
     ;; first run
+    cell addr_map = begin_cell().store_slice(body).end_cell();
     cell recvd_tuple_map = new_dict();
-    recvd_tuple_map~udict_set_ref(8, 0, body~load_ref());
+    recvd_tuple_map~udict_set_ref(8, 0, addr_map);
     cell my_data = begin_cell().store_uint(0, 8).store_dict(recvd_tuple_map).end_cell();
     set_data(my_data);
-  } elseif (slice_bits(get_data().begin_parse()) != 1){
-    slice my_data_sl = get_data().begin_parse();
+  } elseif (operation_mode == 1){
+    ;; nothing to do, already sent payload
+  } else {
+    cell hash_to_cell = begin_cell().store_slice(body).end_cell();
     int curr_idx = my_data_sl~load_uint(8) + 1;
     cell recvd_tuple_map = my_data_sl~load_dict();
-    cell tuple_elem = body~load_ref();
 
-    (cell cell_stats, _) = udict_get_ref?(tuple_elem, 256, 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff);
+    (cell cell_stats, _) = udict_get_ref?(hash_to_cell, 256, 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff);
     slice cell_stats_sl = cell_stats.begin_parse();
     int bit_ct = cell_stats_sl~load_uint(16);   ;; max 40,000 (max container 65535)
     int cell_ct = cell_stats_sl~load_uint(10);  ;; max 1,000 cells (max container 1023)
     int verified_full = cell_stats_sl~load_uint(1);   ;; boolean (uint 0 or 1)
+
     if ((bit_ct == 39) & (cell_ct == 2)) {
       ;; reached end of necessary tuple elements, begin send
       tuple final_results = empty_tuple(); int ct = 0;
       while (ct < curr_idx) {
-        (tuple_elem, _) = udict_get_ref?(recvd_tuple_map, 8, ct);
+        (cell tuple_elem, _) = udict_get_ref?(recvd_tuple_map, 8, ct);
         final_results~tpush(tuple_elem);
         ct += 1;
       }
       cell addr_map = final_results.at(0);
+      (slice large_cell_hash_sl, _) = udict_get?(addr_map, 256, 1);
+      int large_cell_hash = large_cell_hash_sl~load_uint(256);
       (slice dest_address, _) = udict_get?(addr_map, 256, 2);
       cell large_cell = compose(final_results);
+      ;; ~dump([299, cell_hash(large_cell), large_cell, large_cell.begin_parse()]);
       cell msg_to_send = begin_cell()
         .store_uint(0x18, 6)
         .store_slice(dest_address)
@@ -183,9 +191,10 @@ tuple decomposite (cell big_cell, slice destination_address) method_id {
         .end_cell();
       send_raw_message(msg_to_send, 0);
       set_data(begin_cell().store_uint(1, 1).end_cell());
+      while (large_cell_hash != cell_hash(large_cell)) { ~dump(99); }
     } else {
       ;; save this, more usefuls incoming
-      recvd_tuple_map~udict_set_ref(8, curr_idx, tuple_elem);
+      recvd_tuple_map~udict_set_ref(8, curr_idx, hash_to_cell);
       cell my_data = begin_cell().store_uint(curr_idx, 8).store_dict(recvd_tuple_map).end_cell();
       set_data(my_data);
     }
@@ -257,17 +266,14 @@ cell msg = begin_cell()
            .end_cell())
        .end_cell())
   .end_cell();
-  ;; cell c = compose(decomposite(msg, begin_cell().store_uint(8, 8).end_cell().begin_parse()));
-  ;; ~dump([c, msg, cell_hash(c), cell_hash(msg)]);
   slice dst = begin_cell().store_uint(8, 8).end_cell().begin_parse();
-  ~dump([9090, dst]);
   tuple to_send = decomposite(msg, dst);
-  int ct = 0;
-  while (ct < 255){
-    slice op = begin_cell().store_ref(to_send.at(ct)).end_cell().begin_parse();
-    ;; holla(op);
-    ct += 1;
-  }
-  ~dump([99, cell_hash(msg), slice_hash(dst)]);
+  ;; enumerate_dict(to_send.at(2));
+  ;; ~dump([138, udict_get?(to_send.at(1), 256, 69675177239051095405772812861709225598059686123525973174639614789520862312481)]);
+  ;; cell test = compose(to_send);
+  ;; int ct = 0; while (ct < 255){ holla(to_send.at(ct).begin_parse()); ct += 1; }
+  ~dump([99, cell_hash(msg), msg, msg.begin_parse()]);
+  ;; ~dump([199, cell_hash(test), test, test.begin_parse()]);
+  ~dump(293);
   return (9,9);
 }
