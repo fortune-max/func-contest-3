@@ -37,7 +37,7 @@ tuple store_address_to_tupleidx_and_hash(builder curr_address, int hash_key, int
     if ((compute_bits_ct >= 37500) | (compute_cell_ct >= 995)){
       ;; this cell is definitely full, switch
       verified_full = 1; tuple_idx_hint += 1;
-      (tuple_idx, final_result) = store_key_to_slice(hash_key, slice_to_add, tuple_idx_hint, final_result);
+      (tuple_idx_hint, final_result) = store_key_to_slice(hash_key, slice_to_add, tuple_idx_hint, final_result);
     } else { 
       ;; we ok bruh, do your thing
       int slice_bit_ct = slice_bits(slice_to_add); bit_ct += slice_bit_ct; cell_ct += 1;
@@ -60,7 +60,7 @@ tuple store_address_to_tupleidx_and_hash(builder curr_address, int hash_key, int
       updated_tuple~tpush(final_result.at(ct));
     } ct += 1;
   }
-  return (tuple_idx, updated_tuple);
+  return (tuple_idx_hint, updated_tuple);
 }
 
 (int, tuple) add_to_tuple(slice slice_to_add, builder curr_address, int tuple_idx_hint, tuple final_result) {
