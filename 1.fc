@@ -167,7 +167,7 @@ tuple decomposite (cell big_cell, slice destination_address) method_id {
     int cell_ct = cell_stats_sl~load_uint(10);  ;; max 1,000 cells (max container 1023)
     int verified_full = cell_stats_sl~load_uint(1);   ;; boolean (uint 0 or 1)
 
-    if ((bit_ct == 39) & (cell_ct == 2)) {
+    if (curr_idx == 254){
       ;; reached end of necessary tuple elements, begin send
       tuple final_results = empty_tuple(); int ct = 0;
       while (ct < curr_idx) {
