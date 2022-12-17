@@ -14,16 +14,22 @@
 tuple store_address_to_tupleidx_and_hash(builder curr_address, int hash_key, int tuple_idx, tuple final_result){
   slice curr_address_sl = curr_address.end_cell().begin_parse();
   int addr_int_rep = curr_address_sl~load_uint(slice_bits(curr_address_sl));
-  cell addr_map = final_result.at(0);
-  addr_map~udict_set(256, addr_int_rep, begin_cell().store_uint(tuple_idx, 8).store_uint(hash_key, 256).end_cell().begin_parse());
-  tuple updated_tuple = empty_tuple(); updated_tuple~tpush(addr_map); int ct = 1;
+  int tuple_idx = 1 + (addr_int_rep % 125);   ;; offset by one, modulo 125
+  cell addr_map = final_result.at(tuple_idx);
+  addr_map~udict_set(256, addr_int_rep, begin_cell().store_uint(hash_key, 256).end_cell().begin_parse());
+  tuple updated_tuple = empty_tuple(); int ct = 0;
   while (ct < 255){
-    updated_tuple~tpush(final_result.at(ct)); ct += 1;
+    if (ct == tuple_idx){
+      updated_tuple~tpush(addr_map);
+    } else {
+      updated_tuple~tpush(final_result.at(ct));
+    } ct += 1;
   }
   return updated_tuple;
 }
 
 (int, tuple) store_key_to_slice(int hash_key, slice slice_to_add, int tuple_idx_hint, tuple final_result){
+  tuple_idx_hint = 126 + (hash_key % 125);
   cell cell_cand = final_result.at(tuple_idx_hint);
   (cell cell_stats, int found) = udict_get_ref?(cell_cand, 256, 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff);
   while (~ found) { ~dump(99); }
