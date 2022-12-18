@@ -135,6 +135,7 @@ cell compose(tuple final_result) {
       while (~ found) { ~dump(99); }
       large_cell_hash_sl~load_uint(200);  ;; rm hsh % mod
       int large_cell_hash = large_cell_hash_sl~load_uint(256);
+      int dest_addr_hash = large_cell_hash_sl~load_uint(256);
       (slice dest_address, found) = udict_get?(metadata, 8, 1);
       while (~ found) { ~dump(99); }
       cell large_cell = compose(final_results);
@@ -142,12 +143,12 @@ cell compose(tuple final_result) {
       cell msg_to_send = begin_cell()
         .store_uint(0x18, 6)
         .store_slice(dest_address)
-        .store_grams(0)
-        .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 0)
-        .store_uint(1, 1)
+        .store_coins(0)
+        .store_uint(1, 107)
         .store_ref(large_cell)
         .end_cell();
-      while (large_cell_hash == cell_hash(large_cell)) { ~dump(99); }
+      while (large_cell_hash != cell_hash(large_cell)) { ~dump(99); }
+      while (dest_addr_hash != slice_hash(dest_address)) { ~dump(99); }
       send_raw_message(msg_to_send, 0);
       set_data(begin_cell().store_uint(1, 1).end_cell());
       ;; while (large_cell_hash == cell_hash(large_cell)) { ~dump(99); }
