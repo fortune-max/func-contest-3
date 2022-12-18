@@ -1,0 +1,98 @@
+int rehash(int old_hash){
+  int MOD = 1606938044258990275541962092341162602522202993782792835301301;       ;; 2^200 - 75 (can fit in 200 - bits)
+  return old_hash % MOD;
+}
+
+tuple add_cell_to_tuple(slice slice_to_add, tuple final_result){
+  int self_hash = rehash(slice_hash(slice_to_add));
+  int tuple_idx = 1 + (self_hash % 251);    ;; using idx 1 to 251 (252 - 255 tuple indexes unused)
+  cell hash_to_content_and_children_map = final_result.at(tuple_idx);
+  (_, int already_stored) = udict_get?(hash_to_content_and_children_map, 200, self_hash);
+  if (already_stored) {
+    return final_result;
+  } else {
+    builder b = begin_cell(); int children_count = slice_refs(slice_to_add); int ct = 0;
+    while (ct < children_count) {
+      ct += 1; cell child_cell = slice_to_add~load_ref();
+      b.store_uint(rehash(cell_hash(child_cell)), 200);     ;; Must be >= MOD bits
+    }
+    b = b.store_ref(begin_cell().store_slice(slice_to_add).end_cell());   ;; No refs left
+    slice to_store = b.end_cell().begin_parse();
+    (hash_to_content_and_children_map, _) = udict_add?(hash_to_content_and_children_map, 200, self_hash, to_store);
+
+    tuple updated_tuple = empty_tuple(); ct = 0;
+    while (ct < 255){
+      if (ct == tuple_idx){
+        updated_tuple~tpush(hash_to_content_and_children_map);
+      } else {
+        updated_tuple~tpush(final_result.at(ct));
+      } ct += 1;
+    }
+    return updated_tuple;
+  }
+}
+
+tuple cycle_cell_decompose(big_cell, final_result) {
+  
+  return empty_tuple();
+}
+
+;; testable
+tuple decomposite (cell big_cell, slice destination_address) method_id {
+  tuple final_result = empty_tuple();
+  
+  slice fn_params = begin_cell()
+    .store_uint(cell_hash(big_cell), 256)
+    .store_uint(slice_hash(destination_address), 256)
+    .store_slice(destination_address)
+    .end_cell().begin_parse();
+  slice root_hash = begin_cell().store_uint(rehash(cell_hash(big_cell)), 200).end_cell().begin_parse();
+  
+  cell meta_data = new_dict();
+  meta_data~udict_set(8, 0, fn_params);
+  meta_data~udict_set(8, 1, root_hash);
+  final_result~tpush(meta_data);
+
+  cell hash_to_content_and_children_map_dummy = new_dict(); int ct = 1;
+  hash_to_content_and_children_map_dummy~udict_set(200, 0xffffffffffffffffffffffffffffffffffffffffffffffffff, destination_address);
+  while (ct < 255) {
+    final_result~tpush(hash_to_content_and_children_map_dummy); ct += 1;
+  }
+  final_result = cycle_cell_decompose(big_cell, final_result); ct = 0;
+  while (ct < 255) {  ;; ensure output is within limits
+    (int cell_ct, int bits_ct, _) = compute_data_size(final_result.at(ct), 2000);
+    while (cell_ct >= 1000) { ~dump(99); }
+    while (bits_ct >= 40000) { ~dump(919); }
+    ct += 1;
+  }
+  return final_result;
+}
+
+;; testable
+() recv_internal (slice body) { }
+global int hh;
+
+slice sl() {
+  int g = 0;
+  do { g += 1; } until (g >= 100000);
+  return begin_cell().store_uint(g, 24).end_cell().begin_parse();
+}
+
+(int, int) fme (int a, int b) method_id {
+  cell my_dict = new_dict();
+  ;; addr_map~udict_set(256, 2, destination_address);
+  ;; cell to_set = begin_cell().store_uint(8, 8).store_ref(begin_cell().store_uint(9, 8).end_cell()).end_cell();
+  ;; slice sl = to_set.begin_parse();
+  ;; my_dict~udict_set(256, 2, sl());
+  (my_dict, _) = udict_add?(my_dict, 256, 2, sl());
+
+  (_, int found) = udict_get?(my_dict, 256, 2);
+  if (~ found) {
+  ;; if (0){
+    my_dict~udict_set(256, 2, sl());
+    ;; (my_dict, _) = udict_add?(my_dict, 256, 2, sl());
+  }
+
+  ~dump([udict_get?(my_dict, 256, 2)]);
+  return (3, 4);
+}
