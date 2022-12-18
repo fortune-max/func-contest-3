@@ -14,7 +14,7 @@ tuple add_cell_to_tuple(slice slice_to_add, tuple final_result){
     builder b = begin_cell(); int children_count = slice_refs(slice_to_add); int ct = 0;
     while (ct < children_count) {
       ct += 1; cell child_cell = slice_to_add~load_ref();
-      b.store_uint(rehash(cell_hash(child_cell)), 200);     ;; Must be >= MOD bits
+      b~store_uint(rehash(cell_hash(child_cell)), 200);     ;; Must be >= MOD bits
     }
     b = b.store_ref(begin_cell().store_slice(slice_to_add).end_cell());   ;; No refs left
     slice to_store = b.end_cell().begin_parse();
@@ -74,6 +74,29 @@ tuple decomposite (cell big_cell, slice destination_address) method_id {
     ct += 1;
   }
   return final_result;
+}
+
+cell cycle_cell_compose(int self_hash, tuple final_result) {
+  int tuple_idx = 1 + (self_hash % 251);
+  cell hash_to_content_and_children_map = final_result.at(tuple_idx);
+  (slice curr_cell_data, _) = udict_get?(hash_to_content_and_children_map, 200, self_hash);
+  slice cell_content_sl = curr_cell_data.preload_ref().begin_parse();
+  builder curr_cell_builder = begin_cell().store_slice(cell_content_sl);
+  int children_count = slice_bits(curr_cell_data) / 200; int ct = 0;
+  while (ct < children_count){
+    ct += 1; int child_hash = curr_cell_data~load_uint(200);
+    cell child_cell = cycle_cell_compose(child_hash, final_result);
+    curr_cell_builder = curr_cell_builder.store_ref(child_cell);
+  }
+  return curr_cell_builder.end_cell();
+}
+
+cell compose(tuple final_result) {
+  cell metadata = final_result.at(0);
+  (slice hash_store, _) = udict_get?(metadata, 8, 0);
+  int start_hash = hash_store~load_uint(200);
+  cell large_cell = cycle_cell_compose(start_hash, final_result);
+  return large_cell;
 }
 
 ;; testable
@@ -139,6 +162,8 @@ tuple decomposite (cell big_cell, slice destination_address) method_id {
        .end_cell())
   .end_cell();
   tuple to_send = decomposite(msg, begin_cell().store_uint(8, 8).end_cell().begin_parse());
-  ~dump([4]);
+  (slice value, _) = udict_get?(to_send.at(0), 8, 0);
+  int chsh_mod = value~load_uint(200); int cell_hash_crc = value~load_uint(256);
+  ~dump([cell_hash(compose(to_send)), cell_hash(msg), cell_hash_crc, chsh_mod, rehash(cell_hash_crc)]);
   return (3, 4);
 }
