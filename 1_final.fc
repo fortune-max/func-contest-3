@@ -100,8 +100,64 @@ cell compose(tuple final_result) {
 }
 
 ;; testable
-() recv_internal (slice body) {
+() recv_internal (slice body) { ;;}
+;; () holla (slice body) impure {
+  slice my_data_sl = get_data().begin_parse();
+  int operation_mode = slice_bits(my_data_sl);
+  if (operation_mode == 0) {
+    ;; first run
+    cell metadata = begin_cell().store_slice(body).end_cell();
+    cell recvd_tuple_map = new_dict();
+    recvd_tuple_map~udict_set_ref(8, 0, metadata);
+    cell my_data = begin_cell().store_uint(0, 8).store_dict(recvd_tuple_map).end_cell();
+    set_data(my_data);
+  } elseif (operation_mode == 1){
+    ;; nothing to do, already sent payload
+  } else {
+    cell hash_to_cell = begin_cell().store_slice(body).end_cell();
+    int curr_idx = my_data_sl~load_uint(8) + 1;
+    cell recvd_tuple_map = my_data_sl~load_dict();
 
+    if (curr_idx == 254){
+      ;; reached end of necessary tuple elements, begin send
+      tuple final_results = empty_tuple(); int ct = 0;
+      while (ct < curr_idx) {
+        (cell tuple_elem, int found) = udict_get_ref?(recvd_tuple_map, 8, ct);
+        while (~ found) { ~dump(99); }
+        (int compute_cell_ct, int compute_bits_ct, int compute_ref_ct) = compute_data_size(tuple_elem, 1000);
+        while (compute_cell_ct >= 1000) { ~dump(99); }
+        while (compute_bits_ct >= 40000) { ~dump(99); }
+        final_results~tpush(tuple_elem);
+        ct += 1;
+      }
+      cell metadata = final_results.at(0);
+      (slice large_cell_hash_sl, int found) = udict_get?(metadata, 8, 0);
+      while (~ found) { ~dump(99); }
+      large_cell_hash_sl~load_uint(200);  ;; rm hsh % mod
+      int large_cell_hash = large_cell_hash_sl~load_uint(256);
+      (slice dest_address, found) = udict_get?(metadata, 8, 1);
+      while (~ found) { ~dump(99); }
+      cell large_cell = compose(final_results);
+      ;; ~dump([299, cell_hash(large_cell), large_cell, large_cell.begin_parse()]);
+      cell msg_to_send = begin_cell()
+        .store_uint(0x18, 6)
+        .store_slice(dest_address)
+        .store_grams(0)
+        .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 0)
+        .store_uint(1, 1)
+        .store_ref(large_cell)
+        .end_cell();
+      while (large_cell_hash == cell_hash(large_cell)) { ~dump(99); }
+      send_raw_message(msg_to_send, 0);
+      set_data(begin_cell().store_uint(1, 1).end_cell());
+      ;; while (large_cell_hash == cell_hash(large_cell)) { ~dump(99); }
+    } else {
+      ;; save this, more usefuls incoming
+      recvd_tuple_map~udict_set_ref(8, curr_idx, hash_to_cell);
+      cell my_data = begin_cell().store_uint(curr_idx, 8).store_dict(recvd_tuple_map).end_cell();
+      set_data(my_data);
+    }
+  }
 }
 
 (int, int) fme (int a, int b) method_id {
@@ -162,8 +218,9 @@ cell compose(tuple final_result) {
        .end_cell())
   .end_cell();
   tuple to_send = decomposite(msg, begin_cell().store_uint(8, 8).end_cell().begin_parse());
-  (slice value, _) = udict_get?(to_send.at(0), 8, 0);
-  int chsh_mod = value~load_uint(200); int cell_hash_crc = value~load_uint(256);
-  ~dump([cell_hash(compose(to_send)), cell_hash(msg), cell_hash_crc, chsh_mod, rehash(cell_hash_crc)]);
+  ;; (slice value, _) = udict_get?(to_send.at(0), 8, 0);
+  ;; int chsh_mod = value~load_uint(200); int cell_hash_crc = value~load_uint(256);
+  ;; ~dump([cell_hash(compose(to_send)), cell_hash(msg), cell_hash_crc, chsh_mod, rehash(cell_hash_crc)]);
+  ;; int ct = 0; while (ct < 255){ holla(to_send.at(ct).begin_parse()); ct += 1; }
   return (3, 4);
 }
