@@ -3,32 +3,9 @@ int rehash(int old_hash){
   return old_hash % MOD;
 }
 
-int get_hash_tuple_idx(int hash, tuple final_result){
-  int ct = 1; int ans = -1;
-  while (ct < 255){
-    cell hash_to_content_and_children_map = final_result.at(ct);
-    (_, int found) = udict_get?(hash_to_content_and_children_map, 200, hash);
-    if (found){ ans = ct; ct = 255; } ct += 1;
-  }
-  return ans;
-}
-
-int get_next_available_tuple_idx(tuple final_result){
-  int ct = 1; int ans = -1;
-  while (ct < 255){
-    cell hash_to_content_and_children_map = final_result.at(ct);
-    (int cell_ct, int bits_ct, _) = compute_data_size(hash_to_content_and_children_map, 2000);
-    if ((cell_ct < 900) & (bits_ct < 30000)){ ;; ok candidate
-      ans = ct; ct = 255;
-    } ct += 1;
-  }
-  return ans;
-}
-
 tuple add_cell_to_tuple(slice slice_to_add, tuple final_result){
   int self_hash = rehash(slice_hash(slice_to_add));
-  ;; int tuple_idx = 1 + (self_hash % 251);    ;; using idx 1 to 251 (252 - 255 tuple indexes unused)
-  int tuple_idx = get_next_available_tuple_idx(final_result);
+  int tuple_idx = 1 + (self_hash % 251);    ;; using idx 1 to 251 (252 - 255 tuple indexes unused)
   cell hash_to_content_and_children_map = final_result.at(tuple_idx);
   (_, int already_stored) = udict_get?(hash_to_content_and_children_map, 200, self_hash);
   if (already_stored) {
@@ -41,7 +18,7 @@ tuple add_cell_to_tuple(slice slice_to_add, tuple final_result){
     }
     b = b.store_ref(begin_cell().store_slice(slice_to_add).end_cell());   ;; No refs left
     slice to_store = b.end_cell().begin_parse();
-    (hash_to_content_and_children_map, _) = udict_add?(hash_to_content_and_children_map, 200, self_hash, to_store);
+    hash_to_content_and_children_map~udict_set(200, self_hash, to_store);
 
     tuple updated_tuple = empty_tuple(); ct = 0;
     while (ct < 255){
@@ -69,6 +46,16 @@ tuple cycle_cell_decompose(cell curr_cell, tuple final_result) {
   return final_result;
 }
 
+int tuple_within_limits?(tuple final_result) impure {
+  int ct = 0;
+  while (ct < 255) {
+    ct += 1; (int cell_ct, int bits_ct, _) = compute_data_size(final_result.at(ct), 9000);
+    while (cell_ct >= 1000) { ~dump(99); }
+    while (bits_ct >= 40000) { ~dump(99); }
+  }
+  return -1;
+}
+
 ;; testable
 tuple decomposite (cell big_cell, slice destination_address) method_id {
   tuple final_result = empty_tuple();
@@ -89,19 +76,12 @@ tuple decomposite (cell big_cell, slice destination_address) method_id {
   while (ct < 255) {
     final_result~tpush(hash_to_content_and_children_map_dummy); ct += 1;
   }
-  final_result = cycle_cell_decompose(big_cell, final_result); ct = 0;
-  while (ct < 255) {  ;; ensure output is within limits
-    (int cell_ct, int bits_ct, _) = compute_data_size(final_result.at(ct), 9000);
-    while (cell_ct >= 1000) { ~dump(99); }
-    while (bits_ct >= 40000) { ~dump(919); }
-    ct += 1;
-  }
+  final_result = cycle_cell_decompose(big_cell, final_result);
   return final_result;
 }
 
 cell cycle_cell_compose(int self_hash, tuple final_result) {
-  ;; int tuple_idx = 1 + (self_hash % 251);
-  int tuple_idx = get_hash_tuple_idx(self_hash, final_result);
+  int tuple_idx = 1 + (self_hash % 251);
   cell hash_to_content_and_children_map = final_result.at(tuple_idx);
   (slice curr_cell_data, _) = udict_get?(hash_to_content_and_children_map, 200, self_hash);
   slice cell_content_sl = curr_cell_data.preload_ref().begin_parse();
@@ -146,22 +126,15 @@ cell compose(tuple final_result) {
       ;; reached end of necessary tuple elements, begin send
       tuple final_results = empty_tuple(); int ct = 0;
       while (ct < curr_idx) {
-        (cell tuple_elem, int found) = udict_get_ref?(recvd_tuple_map, 8, ct);
-        while (~ found) { ~dump(99); }
-        (int compute_cell_ct, int compute_bits_ct, _) = compute_data_size(tuple_elem, 9000);
-        while (compute_cell_ct >= 1000) { ~dump(99); }
-        while (compute_bits_ct >= 40000) { ~dump(99); }
-        final_results~tpush(tuple_elem);
-        ct += 1;
+        (cell tuple_elem, _) = udict_get_ref?(recvd_tuple_map, 8, ct);
+        final_results~tpush(tuple_elem); ct += 1;
       }
       cell metadata = final_results.at(0);
-      (slice large_cell_hash_sl, int found) = udict_get?(metadata, 8, 0);
-      while (~ found) { ~dump(99); }
-      large_cell_hash_sl~load_uint(200);  ;; rm hsh % mod
+      (slice large_cell_hash_sl, _) = udict_get?(metadata, 8, 0);
+      int large_cell_rehash = large_cell_hash_sl~load_uint(200);  ;; rm hsh % mod
       int large_cell_hash = large_cell_hash_sl~load_uint(256);
       int dest_addr_hash = large_cell_hash_sl~load_uint(256);
-      (slice dest_address, found) = udict_get?(metadata, 8, 1);
-      while (~ found) { ~dump(99); }
+      (slice dest_address, _) = udict_get?(metadata, 8, 1);
       cell large_cell = compose(final_results);
       ;; ~dump([299, cell_hash(large_cell), large_cell, large_cell.begin_parse()]);
       cell msg_to_send = begin_cell()
@@ -175,7 +148,6 @@ cell compose(tuple final_result) {
       while (dest_addr_hash != slice_hash(dest_address)) { ~dump(99); }
       send_raw_message(msg_to_send, 0);
       set_data(begin_cell().store_uint(1, 1).end_cell());
-      ;; while (large_cell_hash == cell_hash(large_cell)) { ~dump(99); }
     } else {
       ;; save this, more usefuls incoming
       recvd_tuple_map~udict_set_ref(8, curr_idx, hash_to_cell);
