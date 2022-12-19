@@ -1,0 +1,112 @@
+int rehash(int old_hash) {
+  int MOD = 1606938044258990275541962092341162602522202993782792835301301;       ;; 2^200 - 75 (can fit in 200 - bits)
+  return old_hash % MOD;
+}
+
+;; tuple add_cell_to_tuple(tuple final_result, slice slice_to_add){
+;;   return final_result;
+;; }
+
+int cycle_cell_decompose(cell curr_cell, int ans) {
+  slice curr_cell_slice = curr_cell.begin_parse();
+  while (slice_refs(curr_cell_slice)) {
+    ans = cycle_cell_decompose(curr_cell_slice~load_ref(), ans);
+  }
+  return ans;
+}
+
+;; testable
+tuple decomposite (cell big_cell, slice destination_address) method_id {
+  tuple final_result = empty_tuple();
+  
+  slice hash_store = begin_cell()
+    .store_uint(rehash(cell_hash(big_cell)), 200)
+    .store_uint(cell_hash(big_cell), 256)
+    .store_uint(slice_hash(destination_address), 256)
+    .end_cell().begin_parse();
+  
+  cell meta_data = new_dict();
+  meta_data~udict_set(8, 0, hash_store);
+  meta_data~udict_set(8, 1, destination_address);
+  final_result~tpush(meta_data);
+
+  cell hash_to_content_and_children_map_dummy = new_dict(); int ct = 1;
+  hash_to_content_and_children_map_dummy~udict_set(200, 0xffffffffffffffffffffffffffffffffffffffffffffffffff, destination_address);
+  while (ct < 255) {
+    final_result~tpush(hash_to_content_and_children_map_dummy); ct += 1;
+  }
+
+  ;; (int tuple_idx_hint, final_result) = cycle_cell(big_cell, begin_cell().store_uint(3, 2), 1, final_result);
+  int ans = cycle_cell_decompose(big_cell, 1);
+  while ((cell_hash(big_cell) % 10 == 6) & (rehash(cell_hash(big_cell)) % 10 == 5)){ ~dump(99); }
+  return final_result;
+}
+
+;; testable
+() recv_internal (slice body) { }
+
+(int, int) fme (int a, int b) method_id {
+  cell msg = begin_cell()
+    .store_uint(0x312b322b332b342b352b362b372b382b392b31302b31312b31322b31332b3134, 256)
+    .store_uint(0x2b31352b31362b31372b31382b31392b32302b32312b32322b32332b32342b32, 256)
+    .store_uint(0x352b32362b32372b32382b32392b33302b33312b33322b33332b33342b33352b, 256)
+    .store_uint(0x33362b33372b33382b33392b34302b34312b34322b34332b34342b34352b34, 248)
+    .store_ref(begin_cell()
+       .store_uint(0x362b34372b34382b34392b35302b35312b35322b35332b35342b35352b35362b, 256)
+       .store_uint(0x35372b35382b35392b36302b36312b36322b36332b36342b36352b36362b3637, 256)
+       .store_uint(0x2b36382b36392b37302b37312b37322b37332b37342b37352b37362b37372b37, 256)
+       .store_uint(0x382b37392b38302b38312b38322b38332b38342b38352b38362b38372b3838, 248)
+       .store_ref(begin_cell()
+           .store_uint(0x2b38392b39302b39312b39322b39332b39342b39352b39362b39372b39382b39, 256)
+           .store_uint(0x392b313030, 40)
+           .store_ref(begin_cell()
+       .store_uint(0x362b34372b34382b34392b35302b35312b35322b35332b35342b35352b35362b, 256)
+       .store_uint(0x35372b35382b35392b36302b36312b36322b36332b36342b36352b36362b3637, 256)
+       .store_uint(0x2b36382b36392b37302b37312b37322b37332b37342b37352b37362b37372b37, 256)
+       .store_uint(0x382b37392b38302b38312b38322b38332b38342b38352b38362b38372b3838, 248)
+       .store_ref(begin_cell()
+           .store_uint(0x2b38392b39302b39312b39322b39332b39342b39352b39362b39372b39382b39, 256)
+           .store_uint(0x392b313030, 40)
+           .end_cell())
+       .end_cell())
+           .end_cell())
+       .end_cell())
+    .store_ref(begin_cell()
+       .store_uint(0x362b34372b34382b34392b35302b35312b35322b35332b35342b35352b35362b, 256)
+       .store_uint(0x35372b35382b35392b36302b36312b36322b36332b36342b36352b36362b3637, 256)
+       .store_uint(0x2b36382b36392b37302b37312b37322b37332b37342b37352b37362b37372b37, 256)
+       .store_uint(0x382b37392b38302b38312b38322b38332b38342b38352b38362b38372b3838, 248)
+       .store_ref(begin_cell()
+           .store_uint(0x2b38392b39302b39312b39322b39332b39342b39352b39362b39372b39382b39, 256)
+           .store_uint(0x392b313030, 40)
+           .end_cell())
+       .end_cell())
+    .store_ref(begin_cell()
+       .store_uint(0x362b34372b34382b34392b35302b35312b35322b35332b35342b35352b35362b, 256)
+       .store_uint(0x35372b35382b35392b36302b36312b36322b36332b36342b36352b36362b3637, 256)
+       .store_uint(0x2b36382b36392b37302b37312b37322b37332b37342b37352b37362b37372b37, 256)
+       .store_uint(0x382b37392b38302b38312b38322b38332b38342b38352b38362b38372b3838, 248)
+       .store_ref(begin_cell()
+           .store_uint(0x2b38392b39302b39312b39322b39332b39342b39352b39362b39372b39382b39, 256)
+           .store_uint(0x392b313030, 40)
+           .end_cell())
+       .end_cell())
+       .store_ref(begin_cell()
+       .store_uint(0x362b34372b34382b34392b35302b35312b35322b35332b35342b35352b35362b, 256)
+       .store_uint(0x35372b35382b35392b36302b36312b36322b36332b36342b36352b36362b3637, 256)
+       .store_uint(0x2b36382b36392b37302b37312b37322b37332b37342b37352b37362b37372b37, 256)
+       .store_uint(0x382b37392b38302b38312b38322b38332b38342b38352b38362b38372b3838, 248)
+       .store_ref(begin_cell()
+           .store_uint(0x2b38392b39302b39312b39322b39332b39342b39352b39362b39372b39382b39, 256)
+           .store_uint(0x392b313030, 40)
+           .end_cell())
+       .end_cell())
+  .end_cell();
+  tuple to_send = decomposite(msg, begin_cell().store_uint(8, 8).end_cell().begin_parse());
+  ;; (slice value, _) = udict_get?(to_send.at(0), 8, 0);
+  ;; int chsh_mod = value~load_uint(200); int cell_hash_crc = value~load_uint(256);
+  ;; ~dump([cell_hash(compose(to_send)), cell_hash(msg)]);
+  ;; int ct = 0; while (ct < 255){ holla(to_send.at(ct).begin_parse()); ct += 1; }
+  ;; ~dump(to_send);
+  return (3, 4);
+}
