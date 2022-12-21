@@ -1,0 +1,261 @@
+{-
+  Validators in TON network are chosen onchain by special smart-contract called Elector: participants sends their application and 
+  smart-contract deterministically decides who will be the next validator. Your task is to implement (in simplified form) election 
+  logic in the gas-optimal way:
+  "Mini-elector" should accept internal messages with the following layout.
+    a) `participate#5ce28eea query_id:uint64 max_factor:uint24 = InternalMsgBody;`. Upon receiving this message contract should 
+    store sender of the message (called key), max_factor and amount of TON attached to message (called stake) to storage (if key 
+    already exists in the table max_factor should be rewritten to new one while amount should be added to previously processed). 
+    If maxfactor is less than 65536 it should be treated as equal to 65536, if maxfactor is higher than 655360 it should be treated
+     as equal to 655360.
+    b) `try_elect#207fa5f5 query_id:uint64 = InternalMsgBody;` - upon receiving this message contract should try to form winners 
+    list (key, effective_stake) from participant' applications. Note that `effective_stake` may be less than `stake` (in other 
+    words, not all the stake will work). Excesses of the stake (as well as stakes of "losers", should be stored separately).
+    Rules of forming a list:
+      I) it has at least 5 rows
+      II) for each participant A in the list, the ratio of A's `effective_stake` to the `effective_stake` of participant
+       with the smallest stake `effective_stake` should be equal or less to A's max_factor/65536 (in other words, 
+       max_factor is 65536 based rational number).
+      III) Under conditions I and II, total effective stake (sum of `effective_stake` of all winners) should be maximal.
+
+    If it is not possible to form a list, contract should throw. Otherwise, it should respond with 
+    `success#eefa5ea4 query_id:uint64 total_winners:uint32 total_effective_stake:(VarUInteger 16) 
+    unused_stake:(VarUInteger 16) = InternalMsgBody;` (query_id matched that in try_elect)
+
+    After responding with `success` message, contract's get_method `get_stake_table` should return two tuples with winners and 
+    "unused funds", this tuples should contain exactly the same number of elements as there are winners/participants-with-unused-funds
+     (NOT lisp-style lists), each element should be in format [address-as-a-slice, stake-as-number].  Note that if participants' stake 
+     is not fully used, it will be presented in both tuples. For instance, possible result of get_stake_table can be 
+     `(["Ef8RERERERERERERERERERERERERERERERERERERERERERlb"a, 10], ["Ef8iIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiImKK"a, 1],  
+     ["Ef8zMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzM0vF"a, 1], ["Ef9ERERERERERERERERERERERERERERERERERERERERERJUo"a, 1],  
+     ["Ef9VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVbxn"a, 1]), (["Ef8RERERERERERERERERERERERERERERERERERERERERERlb"a, 10])`.
+    
+    Note that tests are organized as following: there will be a few participate requests (less than 255) followed by one
+     try_elect and then response and get_method result will be checked.
+-}
+
+int tuple_length( tuple t ) asm "TLEN";
+cell dict_set_ref(cell dict, int key_len, slice index, cell value) asm(value index dict key_len) "DICTSETREF";
+(cell, ()) ~dict_set_ref(cell dict, int key_len, slice index, cell value) asm(value index dict key_len) "DICTSETREF";
+(cell, int) dict_get_ref?(cell dict, int key_len, slice index) asm(index dict key_len) "DICTGETREF" "NULLSWAPIFNOT";
+(slice, int) dict_get?(cell dict, int key_len, slice index) asm(index dict key_len) "DICTGET" "NULLSWAPIFNOT";
+(slice, slice, int) dict_get_next?(cell dict, int key_len, slice pivot) asm(pivot dict key_len -> 1 0 2) "DICTGETNEXT" "NULLSWAPIFNOT2";
+(slice, slice, int) dict_get_prev?(cell dict, int key_len, slice pivot) asm(pivot dict key_len -> 1 0 2) "DICTGETPREV" "NULLSWAPIFNOT2";
+
+;; testable
+() recv_internal (int msg_value, cell full_message, slice in_msg_body) {
+  (int op, int query_id) = (in_msg_body~load_uint(32),in_msg_body~load_uint(64));
+  slice full_message_sl = full_message.begin_parse(); full_message_sl~load_uint(4); ;; rm flags
+  slice particpant_addr = full_message_sl~load_msg_addr();
+  slice meta_data_key_sl = begin_cell().store_uint(0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, 267).end_cell().begin_parse();
+
+  if(op == 0x5ce28eea) {        ;; participate
+    int max_factor = in_msg_body~load_uint(24);
+    slice my_data_sl = get_data().begin_parse();
+    if (slice_bits(my_data_sl) == 0){
+      ;; first run
+      cell participants_dict = new_dict();
+      slice total_stake_sl = begin_cell().store_uint(msg_value, 128).end_cell().begin_parse();
+      participants_dict~dict_set(267, meta_data_key_sl, total_stake_sl);
+      slice participant_data_sl = begin_cell()
+        .store_uint(msg_value, 128)
+        .store_uint(min(max(1, max_factor / 65536), 10), 4)
+        .end_cell().begin_parse();
+      participants_dict~dict_set(267, particpant_addr, participant_data_sl);
+
+      cell stake_to_addr_map = new_dict();
+      stake_to_addr_map~udict_set(msg_value, 128, particpant_addr);
+      set_data(participants_dict);
+    } else {
+      ;; subsequent run
+      cell participants_dict = get_data();
+
+      ;; upd add amt to total
+      (slice total_stake_sl, _) = dict_get?(participants_dict, 267, meta_data_key_sl);
+      int new_total_stake = total_stake_sl~load_uint(128) + msg_value;
+      total_stake_sl = begin_cell().store_uint(new_total_stake, 128).end_cell().begin_parse();
+      participants_dict~dict_set(267, meta_data_key_sl, total_stake_sl);
+      
+      (slice participant_data_sl, int update_op) = dict_get?(participants_dict, 267, particpant_addr);
+
+      if (update_op) {
+        int old_participant_stake = participant_data_sl~load_uint(128);
+        int upd_participant_stake = old_participant_stake + msg_value;
+        participant_data_sl = begin_cell()
+          .store_uint(upd_participant_stake, 128)
+          .store_uint(min(max(1, max_factor / 65536), 10), 4)
+          .end_cell().begin_parse();
+      } else {
+        participant_data_sl = begin_cell()
+          .store_uint(msg_value, 128)
+          .store_uint(min(max(1, max_factor / 65536), 10), 4)
+          .end_cell().begin_parse();
+      }
+      participants_dict~dict_set(267, particpant_addr, participant_data_sl);
+      set_data(participants_dict);
+    }
+  }
+  if(op == 0x207fa5f5) {        ;; try_elect
+    cell participants_dict = get_data(); cell tuple_participants = new_dict();
+    int ct = 0; slice pivot = meta_data_key_sl; int found_nxt = -1;
+    while (found_nxt) {
+      (pivot, slice participant_data_sl, found_nxt) = dict_get_prev?(participants_dict, 267, pivot);
+      if (found_nxt) {
+        slice validator_entry = begin_cell()
+          .store_slice(participant_data_sl) ;; stake (128-bit) & max_factor (4-bit)
+          .store_slice(pivot) ;; addr 267-bit
+          .end_cell().begin_parse();
+        tuple_participants~udict_set(8, ct, validator_entry); ct += 1;
+      }
+    }
+    ;; now we sort the tuple representation dict with bubble sort
+    int a_swap_occured = -1; int last_swap_right_idx = -1; int participant_count = ct;
+    while ((participant_count > 1) & a_swap_occured) {
+      int curr_idx = participant_count - 2; int nxt_idx = curr_idx + 1; ;; look at self and one just ahead
+      a_swap_occured = 0;
+      ;; (slice curr_validator_entry_sl, _) = udict_get?(tuple_participants, 8, curr_idx);
+      (slice nxt_validator_entry_sl, _) = udict_get?(tuple_participants, 8, nxt_idx);
+      while (curr_idx >= 0) {
+        (slice curr_validator_entry_sl, _) = udict_get?(tuple_participants, 8, curr_idx);
+        int curr_stake = curr_validator_entry_sl.preload_uint(128);
+        int nxt_stake = nxt_validator_entry_sl.preload_uint(128);
+        if (curr_stake < nxt_stake) {
+          ;; swap (Big, small) -> (small, Big)
+          tuple_participants~udict_set(8, curr_idx, nxt_validator_entry_sl);
+          tuple_participants~udict_set(8, nxt_idx, curr_validator_entry_sl);
+          a_swap_occured = -1;
+        }
+        curr_idx -= 1; nxt_idx -= 1;
+        nxt_validator_entry_sl = curr_validator_entry_sl; 
+      }
+    }
+    ;; set_data(tuple_participants);   ;; for use later (delay we need idx of best min eff stake), and store participant ct
+    ;; tuple_rep now sorted, enumerate into tuple
+    ct = 0; tuple sorted_participants = empty_tuple();
+    while (ct < participant_count) {
+      (slice validator_entry, _) = udict_get?(tuple_participants, 8, ct);
+      tuple sub_tuple = empty_tuple();
+      sub_tuple~tpush(validator_entry~load_uint(128));  ;; stake elem_0
+      sub_tuple~tpush(validator_entry~load_uint(4));  ;; max_factor_normalized elem_1
+      sub_tuple~tpush(validator_entry~load_bits(267));  ;; addr elem_2
+      sorted_participants~tpush(sub_tuple); ct += 1;
+    }
+
+    int min_effective_stake_idx = participant_count - 1; int best_min_effective_stake_idx = -1; int best_total_effective_stake = -1;
+    while (min_effective_stake_idx >= 0) {
+      int effective_stake_idx = min_effective_stake_idx; int total_effective_stake = 0;
+      int min_effective_stake = sorted_participants.at(min_effective_stake_idx).at(0);
+      while (effective_stake_idx >= 0) {
+        int stake = sorted_participants.at(effective_stake_idx).at(0);
+        int max_factor = sorted_participants.at(effective_stake_idx).at(1);
+        int effective_stake = min(stake, max_factor * min_effective_stake);
+        total_effective_stake += effective_stake;
+        effective_stake_idx -= 1;
+      }
+      if (total_effective_stake > best_total_effective_stake) {
+        best_min_effective_stake_idx = min_effective_stake_idx;
+        best_total_effective_stake = total_effective_stake;
+      }
+      min_effective_stake_idx -= 1;
+    }
+    ;; we now know min_effective_stake_idx and best_total_effective_stake
+    (slice total_stake_sl, _) = dict_get?(participants_dict, 267, meta_data_key_sl);
+    int total_stake = total_stake_sl~load_uint(128);
+    ;; `success#eefa5ea4 query_id:uint64 total_winners:uint32 total_effective_stake:(VarUInteger 16) 
+    ;; unused_stake:(VarUInteger 16) = InternalMsgBody;` (query_id matched that in try_elect)
+    int total_winners = best_min_effective_stake_idx + 1;
+    int total_effective_stake = best_total_effective_stake;
+    int unused_stake = total_stake - total_effective_stake;
+    
+    cell response = begin_cell()
+      .store_uint(0x18, 6)
+      .store_slice(particpant_addr)
+      .store_coins(0)
+      .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1) ;; msg_body starts in next line
+      .store_uint(0xeefa5ea4, 32)   ;; op
+      .store_uint(query_id, 64)     ;; query_id same as try_elect request
+      .store_uint(total_winners, 32)
+      .store_coins(total_effective_stake)
+      .store_coins(unused_stake)
+      .end_cell();
+    throw_if(100, participant_count < 5);
+    send_raw_message(response, 64);
+    ;; set internal storage here
+    cell my_new_data = begin_cell()
+      .store_uint(participant_count, 8)
+      .store_uint(best_min_effective_stake_idx, 8)
+      .store_uint(total_stake, 128)
+      .store_dict(tuple_participants)
+      .end_cell();
+    set_data(my_new_data);
+  }
+}
+
+;; testable
+(tuple, tuple) get_stake_table() method_id {
+  slice my_new_data_sl = get_data().begin_parse();
+  int participant_count = my_new_data_sl~load_uint(8);
+  int best_min_effective_stake_idx = my_new_data_sl~load_uint(8);
+  int total_stake = my_new_data_sl~load_uint(128);
+  cell tuple_participants = my_new_data_sl~load_dict();
+
+  int ct = 0; tuple sorted_participants = empty_tuple();
+  while (ct < participant_count) {
+    (slice validator_entry, _) = udict_get?(tuple_participants, 8, ct);
+    tuple sub_tuple = empty_tuple();
+    sub_tuple~tpush(validator_entry~load_uint(128));  ;; stake elem_0
+    sub_tuple~tpush(validator_entry~load_uint(4));  ;; max_factor_normalized elem_1
+    sub_tuple~tpush(validator_entry~load_bits(267));  ;; addr elem_2
+    sorted_participants~tpush(sub_tuple); ct += 1;
+  }
+
+  tuple winners = empty_tuple(); tuple unused_funds = empty_tuple(); ct = 0;
+  int min_effective_stake = sorted_participants.at(best_min_effective_stake_idx).at(0);
+  while (ct < participant_count) {
+    int stake = sorted_participants.at(ct).at(0);
+    slice participant_addr = sorted_participants.at(ct).at(2);
+    if (ct <= best_min_effective_stake_idx) { ;; a winner
+      int max_factor = sorted_participants.at(ct).at(1);
+      int effective_stake = min(stake, max_factor * min_effective_stake);
+      if (stake != effective_stake) {   ;; add remaining to unused_funds
+        tuple sub_tuple = empty_tuple();
+        sub_tuple~tpush(participant_addr);
+        sub_tuple~tpush(stake - effective_stake);
+        unused_funds~tpush(sub_tuple);
+      }
+      tuple sub_tuple = empty_tuple();
+      sub_tuple~tpush(participant_addr);
+      sub_tuple~tpush(effective_stake);
+      winners~tpush(sub_tuple);
+    } else { ;; always just goes to unused_funds
+      tuple sub_tuple = empty_tuple();
+      sub_tuple~tpush(participant_addr);
+      sub_tuple~tpush(stake);
+      unused_funds~tpush(sub_tuple);
+    }
+    ct += 1;
+  }
+  return (winners, unused_funds);
+}
+
+
+
+() fme (int a, int b) method_id {
+  cell test_dict = new_dict();
+
+  slice first_addr_sl = begin_cell().store_uint(1, 2).end_cell().begin_parse();
+  slice second_addr_sl = begin_cell().store_uint(2, 2).end_cell().begin_parse();
+  
+  cell dummy_data_1 = begin_cell().store_uint(0xbabe, 16).end_cell();
+  slice dummy_sl = dummy_data_1.begin_parse();
+  
+  test_dict~dict_set(1, first_addr_sl, dummy_sl);
+  ~dump([dict_get?(test_dict, 1, first_addr_sl)]);
+
+  test_dict~dict_set_ref(1, first_addr_sl, dummy_data_1);
+  ~dump([[dict_get_ref?(test_dict, 1, first_addr_sl)], dummy_data_1]);
+  
+  ;; ~dump([dict_get_ref?(new_dict(), 3, begin_cell().store_uint(1, 3).end_cell().begin_parse())]);
+  ;; ~dump(my_address());
+  ;; ~dump(parse_addr(my_address()));
+}
