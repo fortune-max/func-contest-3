@@ -67,9 +67,6 @@ cell dict_set_ref(cell dict, int key_len, slice index, cell value) asm(value ind
         .store_uint(min(max(1, max_factor / 65536), 10), 4)
         .end_cell().begin_parse();
       participants_dict~dict_set(267, particpant_addr, participant_data_sl);
-
-      cell stake_to_addr_map = new_dict();
-      stake_to_addr_map~udict_set(msg_value, 128, particpant_addr);
       set_data(participants_dict);
     } else {
       ;; subsequent run
@@ -102,13 +99,11 @@ cell dict_set_ref(cell dict, int key_len, slice index, cell value) asm(value ind
   }
   if(op == 0x207fa5f5) {        ;; try_elect
     cell participants_dict = get_data(); cell tuple_participants = new_dict();
-    if (slice_bits(participants_dict.begin_parse()) == 0) {
-      throw_if(100, 1 == 1);
-    }
+    throw_if(100, slice_bits(participants_dict.begin_parse()) == 0);
     int ct = 0; slice pivot = meta_data_key_sl; int found_nxt = -1;
     while (found_nxt) {
       (pivot, slice participant_data_sl, found_nxt) = dict_get_prev?(participants_dict, 267, pivot);
-      if (found_nxt & (participant_data_sl.preload_uint(128) > 0)) {
+      if (found_nxt) {
         slice validator_entry = begin_cell()
           .store_slice(participant_data_sl) ;; stake (128-bit) & max_factor (4-bit)
           .store_slice(pivot) ;; addr 267-bit
@@ -117,34 +112,28 @@ cell dict_set_ref(cell dict, int key_len, slice index, cell value) asm(value ind
       }
     }
     ;; now we sort the tuple representation dict with bubble sort
-    int a_swap_occured = -1; int last_swap_right_idx = -1; int participant_count = ct;
+    int a_swap_occured = -1; int participant_count = ct;
     throw_if(100, participant_count < 5);
     while (a_swap_occured) {
-      int curr_idx = participant_count - 2; int nxt_idx = curr_idx + 1; ;; look at self and one just ahead
-      a_swap_occured = 0;
-      ;; (slice curr_validator_entry_sl, _) = udict_get_2?(tuple_participants, 8, curr_idx);
-      (slice nxt_validator_entry_sl, _) = udict_get_2?(tuple_participants, 8, nxt_idx);
+      a_swap_occured = 0; int curr_idx = participant_count - 2; int nxt_idx = curr_idx + 1; ;; look at self and one just ahead
       while (curr_idx >= 0) {
         (slice curr_validator_entry_sl, _) = udict_get_2?(tuple_participants, 8, curr_idx);
+        (slice nxt_validator_entry_sl, _) = udict_get_2?(tuple_participants, 8, nxt_idx);
         int curr_stake = curr_validator_entry_sl.preload_uint(128);
         int nxt_stake = nxt_validator_entry_sl.preload_uint(128);
-        if (curr_stake < nxt_stake) {
-          ;; swap (Big, small) -> (small, Big)
+        if (curr_stake < nxt_stake) { ;; swap (small, big) -> (big, small)
           tuple_participants~udict_set(8, curr_idx, nxt_validator_entry_sl);
           tuple_participants~udict_set(8, nxt_idx, curr_validator_entry_sl);
-          (nxt_validator_entry_sl, _) = udict_get_2?(tuple_participants, 8, nxt_idx);
           a_swap_occured = -1;
         } 
         curr_idx -= 1; nxt_idx -= 1;
-        ;; nxt_validator_entry_sl = curr_validator_entry_sl; 
-        (nxt_validator_entry_sl, _) = udict_get_2?(tuple_participants, 8, nxt_idx);
       }
     }
-    ;; set_data(tuple_participants);   ;; for use later (delay we need idx of best min eff stake), and store participant ct
-    ;; tuple_rep now sorted, enumerate into tuple
-    ct = 0; tuple sorted_participants = empty_tuple();
+    ;; tuple_rep now sorted, enumerate into tuple, biggest to smallest
+    ct = 0; tuple sorted_participants = empty_tuple(); int min_effective_stake_idx = -1;
     while (ct < participant_count) {
       (slice validator_entry, _) = udict_get_2?(tuple_participants, 8, ct);
+      if (validator_entry.preload_uint(128) > 0) { min_effective_stake_idx = ct; }  ;; last non-zero stake idx
       tuple sub_tuple = empty_tuple();
       sub_tuple~tpush(validator_entry~load_uint(128));  ;; stake elem_0
       sub_tuple~tpush(validator_entry~load_uint(4));  ;; max_factor_normalized elem_1
@@ -152,7 +141,9 @@ cell dict_set_ref(cell dict, int key_len, slice index, cell value) asm(value ind
       sorted_participants~tpush(sub_tuple); ct += 1;
     }
 
-    int min_effective_stake_idx = participant_count - 1; int best_min_effective_stake_idx = -1; int best_total_effective_stake = -1;
+    throw_if(100, min_effective_stake_idx < 4);   ;; needs at least 5 non-zero participant stakes
+
+    int best_min_effective_stake_idx = -1; int best_total_effective_stake = -1;
     while (min_effective_stake_idx >= 4) {
       int effective_stake_idx = min_effective_stake_idx; int total_effective_stake = 0;
       int min_effective_stake = sorted_participants.at(min_effective_stake_idx).at(0);
@@ -169,7 +160,7 @@ cell dict_set_ref(cell dict, int key_len, slice index, cell value) asm(value ind
       }
       min_effective_stake_idx -= 1;
     }
-    ;; we now know min_effective_stake_idx and best_total_effective_stake
+    ;; we now know best_min_effective_stake_idx and it's crsp best_total_effective_stake
     (slice total_stake_sl, _) = dict_get?(participants_dict, 267, meta_data_key_sl);
     int total_stake = total_stake_sl~load_uint(128);
     ;; `success#eefa5ea4 query_id:uint64 total_winners:uint32 total_effective_stake:(VarUInteger 16) 
