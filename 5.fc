@@ -202,48 +202,52 @@ cell dict_set_ref(cell dict, int key_len, slice index, cell value) asm(value ind
 ;; testable
 (tuple, tuple) get_stake_table() method_id {
   slice my_new_data_sl = get_data().begin_parse();
-  int participant_count = my_new_data_sl~load_uint(8);
-  int best_min_effective_stake_idx = my_new_data_sl~load_uint(8);
-  int total_stake = my_new_data_sl~load_uint(128);
-  cell tuple_participants = my_new_data_sl~load_dict();
+  if (slice_bits(my_new_data_sl) == 0) {
+    return (empty_tuple(), empty_tuple());
+  } else {
+    int participant_count = my_new_data_sl~load_uint(8);
+    int best_min_effective_stake_idx = my_new_data_sl~load_uint(8);
+    int total_stake = my_new_data_sl~load_uint(128);
+    cell tuple_participants = my_new_data_sl~load_dict();
 
-  int ct = 0; tuple sorted_participants = empty_tuple();
-  while (ct < participant_count) {
-    (slice validator_entry, _) = udict_get_2?(tuple_participants, 8, ct);
-    tuple sub_tuple = empty_tuple();
-    sub_tuple~tpush(validator_entry~load_uint(128));  ;; stake elem_0
-    sub_tuple~tpush(validator_entry~load_uint(4));  ;; max_factor_normalized elem_1
-    sub_tuple~tpush(validator_entry~load_bits(267));  ;; addr elem_2
-    sorted_participants~tpush(sub_tuple); ct += 1;
-  }
+    int ct = 0; tuple sorted_participants = empty_tuple();
+    while (ct < participant_count) {
+      (slice validator_entry, _) = udict_get_2?(tuple_participants, 8, ct);
+      tuple sub_tuple = empty_tuple();
+      sub_tuple~tpush(validator_entry~load_uint(128));  ;; stake elem_0
+      sub_tuple~tpush(validator_entry~load_uint(4));  ;; max_factor_normalized elem_1
+      sub_tuple~tpush(validator_entry~load_bits(267));  ;; addr elem_2
+      sorted_participants~tpush(sub_tuple); ct += 1;
+    }
 
-  tuple winners = empty_tuple(); tuple unused_funds = empty_tuple(); ct = 0;
-  int min_effective_stake = sorted_participants.at(best_min_effective_stake_idx).at(0);
-  while (ct < participant_count) {
-    int stake = sorted_participants.at(ct).at(0);
-    slice participant_addr = sorted_participants.at(ct).at(2);
-    if (ct <= best_min_effective_stake_idx) { ;; a winner
-      int max_factor = sorted_participants.at(ct).at(1);
-      int effective_stake = min(stake, max_factor * min_effective_stake);
-      if (stake != effective_stake) {   ;; add remaining to unused_funds
+    tuple winners = empty_tuple(); tuple unused_funds = empty_tuple(); ct = 0;
+    int min_effective_stake = sorted_participants.at(best_min_effective_stake_idx).at(0);
+    while (ct < participant_count) {
+      int stake = sorted_participants.at(ct).at(0);
+      slice participant_addr = sorted_participants.at(ct).at(2);
+      if (ct <= best_min_effective_stake_idx) { ;; a winner
+        int max_factor = sorted_participants.at(ct).at(1);
+        int effective_stake = min(stake, max_factor * min_effective_stake);
+        if (stake != effective_stake) {   ;; add remaining to unused_funds
+          tuple sub_tuple = empty_tuple();
+          sub_tuple~tpush(participant_addr);
+          sub_tuple~tpush(stake - effective_stake);
+          unused_funds~tpush(sub_tuple);
+        }
         tuple sub_tuple = empty_tuple();
         sub_tuple~tpush(participant_addr);
-        sub_tuple~tpush(stake - effective_stake);
+        sub_tuple~tpush(effective_stake);
+        winners~tpush(sub_tuple);
+      } else { ;; always just goes to unused_funds
+        tuple sub_tuple = empty_tuple();
+        sub_tuple~tpush(participant_addr);
+        sub_tuple~tpush(stake);
         unused_funds~tpush(sub_tuple);
       }
-      tuple sub_tuple = empty_tuple();
-      sub_tuple~tpush(participant_addr);
-      sub_tuple~tpush(effective_stake);
-      winners~tpush(sub_tuple);
-    } else { ;; always just goes to unused_funds
-      tuple sub_tuple = empty_tuple();
-      sub_tuple~tpush(participant_addr);
-      sub_tuple~tpush(stake);
-      unused_funds~tpush(sub_tuple);
+      ct += 1;
     }
-    ct += 1;
+    return (winners, unused_funds);
   }
-  return (winners, unused_funds);
 }
 
 slice gen_addr(int addr){ ;; addr 256-b integer
