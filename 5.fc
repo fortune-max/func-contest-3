@@ -43,11 +43,15 @@ cell dict_set_ref(cell dict, int key_len, slice index, cell value) asm(value ind
 (slice, slice, int) dict_get_prev?(cell dict, int key_len, slice pivot) asm(pivot dict key_len -> 1 0 2) "DICTGETPREV" "NULLSWAPIFNOT2";
 
 ;; testable
-() recv_internal (int msg_value, cell full_message, slice in_msg_body) {
+() recv_internal (int msg_value, cell full_message, slice in_msg_body) { ;;}
   (int op, int query_id) = (in_msg_body~load_uint(32),in_msg_body~load_uint(64));
   slice full_message_sl = full_message.begin_parse(); full_message_sl~load_uint(4); ;; rm flags
   slice particpant_addr = full_message_sl~load_msg_addr();
-  slice meta_data_key_sl = begin_cell().store_uint(0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, 267).end_cell().begin_parse();
+;; () holla (int op, int query_id, slice particpant_addr, int msg_value, slice in_msg_body) impure {
+  slice meta_data_key_sl = begin_cell()
+  .store_uint(0x7ff, 11)
+  .store_uint(0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, 256)
+  .end_cell().begin_parse();
 
   if(op == 0x5ce28eea) {        ;; participate
     int max_factor = in_msg_body~load_uint(24);
@@ -110,7 +114,8 @@ cell dict_set_ref(cell dict, int key_len, slice index, cell value) asm(value ind
     }
     ;; now we sort the tuple representation dict with bubble sort
     int a_swap_occured = -1; int last_swap_right_idx = -1; int participant_count = ct;
-    while ((participant_count > 1) & a_swap_occured) {
+    throw_if(100, participant_count < 5);
+    while (a_swap_occured) {
       int curr_idx = participant_count - 2; int nxt_idx = curr_idx + 1; ;; look at self and one just ahead
       a_swap_occured = 0;
       ;; (slice curr_validator_entry_sl, _) = udict_get?(tuple_participants, 8, curr_idx);
@@ -166,7 +171,7 @@ cell dict_set_ref(cell dict, int key_len, slice index, cell value) asm(value ind
     int total_winners = best_min_effective_stake_idx + 1;
     int total_effective_stake = best_total_effective_stake;
     int unused_stake = total_stake - total_effective_stake;
-    
+
     cell response = begin_cell()
       .store_uint(0x18, 6)
       .store_slice(particpant_addr)
@@ -178,7 +183,6 @@ cell dict_set_ref(cell dict, int key_len, slice index, cell value) asm(value ind
       .store_coins(total_effective_stake)
       .store_coins(unused_stake)
       .end_cell();
-    throw_if(100, participant_count < 5);
     send_raw_message(response, 64);
     ;; set internal storage here
     cell my_new_data = begin_cell()
@@ -238,24 +242,43 @@ cell dict_set_ref(cell dict, int key_len, slice index, cell value) asm(value ind
   return (winners, unused_funds);
 }
 
-
+slice gen_addr(int addr){ ;; addr 256-b integer
+  slice addr = begin_cell()
+    .store_uint(2, 2)
+    .store_uint(0, 1)
+    .store_uint(0, 8)
+    .store_uint(addr, 256)
+    .end_cell()
+    .begin_parse();
+  return addr;
+}
 
 () fme (int a, int b) method_id {
-  cell test_dict = new_dict();
+  slice addr_1 = gen_addr(101859951068842955789598003811195617840532065784940813386933245313928310241278);
+  slice addr_2 = gen_addr(94830870153206984875273392226797031161343471984003470313608321980983802462470);
+  slice addr_3 = gen_addr(81195136507700776381861051248094391703741310301827701580908519052777736845893);
+  slice addr_4 = gen_addr(102080646838998606241332844710443160762028100015136901727727579174334361602500);
+  slice addr_5 = gen_addr(69881045423219830829268298333552548002425435544147157433990299455003289804465);
+  slice addr_6 = gen_addr(59535590292810374515814231029614035953677840701666553766531735421872036383587);
+  slice addr_7 = gen_addr(112454378704514877171469106912498232590890625231538212243362224239851055009979);
+  slice addr_8 = gen_addr(94094145806618033257381506439651925479179382071543436055150332793183901352930);
+  
+  ;; () holla (int op, int query_id, slice particpant_addr, int msg_value, slice in_msg_body){
 
-  slice first_addr_sl = begin_cell().store_uint(1, 2).end_cell().begin_parse();
-  slice second_addr_sl = begin_cell().store_uint(2, 2).end_cell().begin_parse();
+  ;; holla(0x5ce28eea, 1, addr_1, 23, begin_cell().store_uint(645, 24).end_cell().begin_parse());  ;; (addr_1, $23, MFN 1) #
+  ;; holla(0x5ce28eea, 2, addr_2, 28, begin_cell().store_uint(65995, 24).end_cell().begin_parse());  ;; (addr_2, $28, MFN 1)
+  ;; holla(0x5ce28eea, 3, addr_1, 46, begin_cell().store_uint(0xffff * 5, 24).end_cell().begin_parse());  ;; (addr_1, $69, MFN 5)
+  ;; holla(0x5ce28eea, 4, addr_3, 95, begin_cell().store_uint(0xffff * 20, 24).end_cell().begin_parse());  ;; (addr_3, $95, MFN 10)
+  ;; holla(0x5ce28eea, 5, addr_4, 129, begin_cell().store_uint(0xffff * 7 - 9, 24).end_cell().begin_parse());  ;; (addr_4, $129, MFN 6)
+  ;; holla(0x5ce28eea, 6, addr_5, 19, begin_cell().store_uint(0xffff * 2, 24).end_cell().begin_parse());  ;; (addr_5, $19, MFN 2) #
+  ;; holla(0x5ce28eea, 7, addr_6, 219, begin_cell().store_uint(0xffff * 10, 24).end_cell().begin_parse());  ;; (addr_6, $219, MFN 10)
+  ;; holla(0x5ce28eea, 8, addr_7, 91, begin_cell().store_uint(0xffff * 3, 24).end_cell().begin_parse());  ;; (addr_7, $91, MFN 3)
+  ;; holla(0x5ce28eea, 9, addr_5, 21, begin_cell().store_uint(0xffff * 8, 24).end_cell().begin_parse());  ;; (addr_5, $40, MFN 8)
   
-  cell dummy_data_1 = begin_cell().store_uint(0xbabe, 16).end_cell();
-  slice dummy_sl = dummy_data_1.begin_parse();
+  ;; [(addr_6, $219, MFN 10), (addr_4, $129, MFN 6), (addr_3, $95, MFN 10), (addr_7, $91, MFN 3), (addr_1, $69, MFN 5), (addr_5, $40, MFN 8), 
+  ;; (addr_2, $28, MFN 1)]
   
-  test_dict~dict_set(1, first_addr_sl, dummy_sl);
-  ~dump([dict_get?(test_dict, 1, first_addr_sl)]);
-
-  test_dict~dict_set_ref(1, first_addr_sl, dummy_data_1);
-  ~dump([[dict_get_ref?(test_dict, 1, first_addr_sl)], dummy_data_1]);
+  ;; holla(0x207fa5f5, 10, addr_8, 0, begin_cell().end_cell().begin_parse());
   
-  ;; ~dump([dict_get_ref?(new_dict(), 3, begin_cell().store_uint(1, 3).end_cell().begin_parse())]);
-  ;; ~dump(my_address());
-  ;; ~dump(parse_addr(my_address()));
+  ;; ~dump([get_stake_table()]);
 }
