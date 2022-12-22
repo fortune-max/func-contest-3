@@ -102,6 +102,9 @@ cell dict_set_ref(cell dict, int key_len, slice index, cell value) asm(value ind
   }
   if(op == 0x207fa5f5) {        ;; try_elect
     cell participants_dict = get_data(); cell tuple_participants = new_dict();
+    if (slice_bits(participants_dict.begin_parse()) == 0) {
+      throw_if(100, 1 == 1);
+    }
     int ct = 0; slice pivot = meta_data_key_sl; int found_nxt = -1;
     while (found_nxt) {
       (pivot, slice participant_data_sl, found_nxt) = dict_get_prev?(participants_dict, 267, pivot);
@@ -270,7 +273,7 @@ slice gen_addr(int addr){ ;; addr 256-b integer
   slice addr_6 = gen_addr(59535590292810374515814231029614035953677840701666553766531735421872036383587);
   slice addr_7 = gen_addr(112454378704514877171469106912498232590890625231538212243362224239851055009979);
   slice addr_8 = gen_addr(94094145806618033257381506439651925479179382071543436055150332793183901352930);
-  
+  ~dump([get_stake_table()]);
   ;; () holla (int op, int query_id, slice particpant_addr, int msg_value, slice in_msg_body){
 
   ;; holla(0x5ce28eea, 1, addr_1, 17, begin_cell().store_uint((0xffff + 1) * 1, 24).end_cell().begin_parse());  ;; (addr_1, $23, MFN 1) #
