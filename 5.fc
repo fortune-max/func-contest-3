@@ -44,11 +44,11 @@ cell dict_set_ref(cell dict, int key_len, slice index, cell value) asm(value ind
 (slice, int) udict_get_2?(cell dict, int key_len, int index) asm(index dict key_len) "DICTUGET" "NULLSWAPIFNOT";
 
 ;; testable
-() recv_internal (int msg_value, cell full_message, slice in_msg_body) { }
-  ;; (int op, int query_id) = (in_msg_body~load_uint(32),in_msg_body~load_uint(64));
-  ;; slice full_message_sl = full_message.begin_parse(); full_message_sl~load_uint(4); ;; rm flags
-  ;; slice particpant_addr = full_message_sl~load_msg_addr();
-() holla (int op, int query_id, slice particpant_addr, int msg_value, slice in_msg_body) impure {
+() recv_internal (int msg_value, cell full_message, slice in_msg_body) { ;;}
+  (int op, int query_id) = (in_msg_body~load_uint(32),in_msg_body~load_uint(64));
+  slice full_message_sl = full_message.begin_parse(); full_message_sl~load_uint(4); ;; rm flags
+  slice particpant_addr = full_message_sl~load_msg_addr();
+;; () holla (int op, int query_id, slice particpant_addr, int msg_value, slice in_msg_body) impure {
   slice meta_data_key_sl = begin_cell()
   .store_uint(0x7ff, 11)
   .store_uint(0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, 256)
@@ -95,7 +95,6 @@ cell dict_set_ref(cell dict, int key_len, slice index, cell value) asm(value ind
           .store_uint(msg_value, 128)
           .store_uint(min(max(1, max_factor / 65536), 10), 4)
           .end_cell().begin_parse();
-        ~dump([901, max_factor, max_factor / 65536, max(1, max_factor / 65536), min(max(1, max_factor / 65536), 10)]);
       }
       participants_dict~dict_set(267, particpant_addr, participant_data_sl);
       set_data(participants_dict);
@@ -159,14 +158,12 @@ cell dict_set_ref(cell dict, int key_len, slice index, cell value) asm(value ind
         int max_factor = sorted_participants.at(effective_stake_idx).at(1);
         int effective_stake = min(stake, max_factor * min_effective_stake);
         total_effective_stake += effective_stake;
-        ~dump([908, effective_stake_idx, effective_stake, stake, max_factor, max_factor * min_effective_stake]);
         effective_stake_idx -= 1;
       }
       if (total_effective_stake > best_total_effective_stake) {
         best_min_effective_stake_idx = min_effective_stake_idx;
         best_total_effective_stake = total_effective_stake;
       }
-      ~dump([929, min_effective_stake_idx, total_effective_stake]);
       min_effective_stake_idx -= 1;
     }
     ;; we now know min_effective_stake_idx and best_total_effective_stake
@@ -177,7 +174,7 @@ cell dict_set_ref(cell dict, int key_len, slice index, cell value) asm(value ind
     int total_winners = best_min_effective_stake_idx + 1;
     int total_effective_stake = best_total_effective_stake;
     int unused_stake = total_stake - total_effective_stake;
-    ~dump([total_effective_stake, total_winners, unused_stake]);
+    ;; ~dump([total_effective_stake, total_winners, unused_stake]);
 
     cell response = begin_cell()
       .store_uint(0x18, 6)
@@ -272,20 +269,21 @@ slice gen_addr(int addr){ ;; addr 256-b integer
   
   ;; () holla (int op, int query_id, slice particpant_addr, int msg_value, slice in_msg_body){
 
-  holla(0x5ce28eea, 1, addr_1, 16, begin_cell().store_uint((0xffff + 1) * 1, 24).end_cell().begin_parse());  ;; (addr_1, $23, MFN 1) #
-  holla(0x5ce28eea, 2, addr_2, 17, begin_cell().store_uint((0xffff + 1) * 1, 24).end_cell().begin_parse());  ;; (addr_2, $28, MFN 1)
-  holla(0x5ce28eea, 3, addr_3, 34, begin_cell().store_uint((0xffff + 1) * 2, 24).end_cell().begin_parse());  ;; (addr_1, $69, MFN 5)
-  holla(0x5ce28eea, 4, addr_4, 51, begin_cell().store_uint((0xffff + 1) * 3, 24).end_cell().begin_parse());  ;; (addr_3, $95, MFN 10)
-  holla(0x5ce28eea, 5, addr_5, 51, begin_cell().store_uint((0xffff + 1) * 3, 24).end_cell().begin_parse());  ;; (addr_4, $129, MFN 6)
-  holla(0x5ce28eea, 6, addr_6, 68, begin_cell().store_uint((0xffff + 1) * 4, 24).end_cell().begin_parse());  ;; (addr_5, $19, MFN 2) #
-  holla(0x5ce28eea, 7, addr_7, 68, begin_cell().store_uint((0xffff + 1) * 4, 24).end_cell().begin_parse());  ;; (addr_6, $219, MFN 10)
-  holla(0x5ce28eea, 8, addr_8, 85, begin_cell().store_uint((0xffff + 1) * 5, 24).end_cell().begin_parse());  ;; (addr_7, $91, MFN 3)
+  ;; holla(0x5ce28eea, 1, addr_1, 16, begin_cell().store_uint((0xffff + 1) * 1, 24).end_cell().begin_parse());  ;; (addr_1, $23, MFN 1) #
+  ;; holla(0x5ce28eea, 2, addr_2, 17, begin_cell().store_uint((0xffff + 1) * 1, 24).end_cell().begin_parse());  ;; (addr_2, $28, MFN 1)
+  ;; holla(0x5ce28eea, 3, addr_3, 34, begin_cell().store_uint((0xffff + 1) * 2, 24).end_cell().begin_parse());  ;; (addr_1, $69, MFN 5)
+  ;; holla(0x5ce28eea, 4, addr_4, 51, begin_cell().store_uint((0xffff + 1) * 3, 24).end_cell().begin_parse());  ;; (addr_3, $95, MFN 10)
+  ;; holla(0x5ce28eea, 5, addr_5, 51, begin_cell().store_uint((0xffff + 1) * 3, 24).end_cell().begin_parse());  ;; (addr_4, $129, MFN 6)
+  ;; holla(0x5ce28eea, 6, addr_6, 68, begin_cell().store_uint((0xffff + 1) * 4, 24).end_cell().begin_parse());  ;; (addr_5, $19, MFN 2) #
+  ;; holla(0x5ce28eea, 7, addr_7, 68, begin_cell().store_uint((0xffff + 1) * 4, 24).end_cell().begin_parse());  ;; (addr_6, $219, MFN 10)
+  ;; holla(0x5ce28eea, 8, addr_8, 85, begin_cell().store_uint((0xffff + 1) * 5, 24).end_cell().begin_parse());  ;; (addr_7, $91, MFN 3)
+  
   ;; holla(0x5ce28eea, 9, addr_5, 21, begin_cell().store_uint(0xffff * 8, 24).end_cell().begin_parse());  ;; (addr_5, $40, MFN 8)
   
   ;; [(addr_6, $219, MFN 10), (addr_4, $129, MFN 6), (addr_3, $95, MFN 10), (addr_7, $91, MFN 3), (addr_1, $69, MFN 5), (addr_5, $40, MFN 8), 
   ;; (addr_2, $28, MFN 1)]
   
-  holla(0x207fa5f5, 10, addr_8, 0, begin_cell().end_cell().begin_parse());
+  ;; holla(0x207fa5f5, 10, addr_8, 0, begin_cell().end_cell().begin_parse());
   
   ;; ~dump([get_stake_table()]);
 }
