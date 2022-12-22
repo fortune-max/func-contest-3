@@ -131,9 +131,14 @@ cell dict_set_ref(cell dict, int key_len, slice index, cell value) asm(value ind
     }
     ;; tuple_rep now sorted, enumerate into tuple, biggest to smallest
     ct = 0; tuple sorted_participants = empty_tuple(); int min_effective_stake_idx = -1;
+    int last_num = 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff;
     while (ct < participant_count) {
       (slice validator_entry, _) = udict_get_2?(tuple_participants, 8, ct);
-      if (validator_entry.preload_uint(128) > 0) { min_effective_stake_idx = ct; }  ;; last non-zero stake idx
+      ;; ensure this is sorted
+      int stake = validator_entry.preload_uint(128);
+      while (stake > last_num) { ~dump(99); }
+      last_num = stake;
+      if (stake > 0) { min_effective_stake_idx = ct; }  ;; last non-zero stake idx
       tuple sub_tuple = empty_tuple();
       sub_tuple~tpush(validator_entry~load_uint(128));  ;; stake elem_0
       sub_tuple~tpush(validator_entry~load_uint(4));  ;; max_factor_normalized elem_1
@@ -188,6 +193,7 @@ cell dict_set_ref(cell dict, int key_len, slice index, cell value) asm(value ind
       .store_uint(best_min_effective_stake_idx, 8)
       .store_uint(total_stake, 128)
       .store_dict(tuple_participants)
+      .store_dict(participants_dict)
       .end_cell();
     set_data(my_new_data);
   }
@@ -203,6 +209,7 @@ cell dict_set_ref(cell dict, int key_len, slice index, cell value) asm(value ind
     int best_min_effective_stake_idx = my_new_data_sl~load_uint(8);
     int total_stake = my_new_data_sl~load_uint(128);
     cell tuple_participants = my_new_data_sl~load_dict();
+    cell participants_dict = my_new_data_sl~load_dict();
 
     int ct = 0; tuple sorted_participants = empty_tuple();
     while (ct < participant_count) {
@@ -240,6 +247,32 @@ cell dict_set_ref(cell dict, int key_len, slice index, cell value) asm(value ind
       }
       ct += 1;
     }
+
+    ;; assert winners count is 5 or more
+    while (winners.tuple_length() < 5) { ~dump(99); }
+    int calc_stake_total = 0; ct = 0;
+    while (ct < winners.tuple_length()){
+      (slice participant_sl, int found) = dict_get?(participants_dict, 267, winners.at(ct).at(0));
+      while (~ found) { ~dump(99); }
+      int stake = participant_sl~load_uint(128);
+      int max_factor = participant_sl~load_uint(4);
+      while (winners.at(ct).at(1) != min(stake, max_factor * min_effective_stake)) { ~dump(99); }
+      calc_stake_total += winners.at(ct).at(1); ct += 1;
+    } ct = 0;
+    while (ct < unused_funds.tuple_length()) {
+      (slice participant_sl, int found) = dict_get?(participants_dict, 267, unused_funds.at(ct).at(0));
+      while (~ found) { ~dump(99); }
+      (int stake, int max_factor) = (participant_sl~load_uint(128), participant_sl~load_uint(4));
+      if (stake < min_effective_stake) { ;; should stay as-is, no effective stake contibution
+        while (unused_funds.at(ct).at(1) != stake) { ~dump(99); }
+      } else { ;; some rm effective stake first
+        while (unused_funds.at(ct).at(1) != stake - min(stake, max_factor * min_effective_stake)) { ~dump(99); }
+      }
+      while (unused_funds.at(ct).at(1) < 1) { ~dump(99); }    ;; all unused stakes should be non-zero
+      calc_stake_total += unused_funds.at(ct).at(1); ct += 1;
+    }
+    ;; assert total stake same as original counter
+    while (calc_stake_total != total_stake) { ~dump(99); }
     return (winners, unused_funds);
   }
 }
@@ -264,17 +297,17 @@ slice gen_addr(int addr){ ;; addr 256-b integer
   slice addr_6 = gen_addr(59535590292810374515814231029614035953677840701666553766531735421872036383587);
   slice addr_7 = gen_addr(112454378704514877171469106912498232590890625231538212243362224239851055009979);
   slice addr_8 = gen_addr(94094145806618033257381506439651925479179382071543436055150332793183901352930);
-  ~dump([get_stake_table()]);
+  ;; ~dump([get_stake_table()]);
   ;; () holla (int op, int query_id, slice particpant_addr, int msg_value, slice in_msg_body){
 
-  ;; holla(0x5ce28eea, 1, addr_1, 17, begin_cell().store_uint((0xffff + 1) * 1, 24).end_cell().begin_parse());  ;; (addr_1, $23, MFN 1) #
+  ;; holla(0x5ce28eea, 1, addr_1, 16, begin_cell().store_uint((0xffff + 1) * 1, 24).end_cell().begin_parse());  ;; (addr_1, $23, MFN 1) #
   ;; holla(0x5ce28eea, 2, addr_2, 17, begin_cell().store_uint((0xffff + 1) * 1, 24).end_cell().begin_parse());  ;; (addr_2, $28, MFN 1)
   ;; holla(0x5ce28eea, 3, addr_3, 34, begin_cell().store_uint((0xffff + 1) * 2, 24).end_cell().begin_parse());  ;; (addr_1, $69, MFN 5)
   ;; holla(0x5ce28eea, 4, addr_4, 51, begin_cell().store_uint((0xffff + 1) * 3, 24).end_cell().begin_parse());  ;; (addr_3, $95, MFN 10)
   ;; holla(0x5ce28eea, 5, addr_5, 51, begin_cell().store_uint((0xffff + 1) * 3, 24).end_cell().begin_parse());  ;; (addr_4, $129, MFN 6)
-  ;; holla(0x5ce28eea, 6, addr_6, 68, begin_cell().store_uint((0xffff + 1) * 4, 24).end_cell().begin_parse());  ;; (addr_5, $19, MFN 2) #
-  ;; holla(0x5ce28eea, 7, addr_7, 69, begin_cell().store_uint((0xffff + 1) * 4, 24).end_cell().begin_parse());  ;; (addr_6, $219, MFN 10)
-  ;; holla(0x5ce28eea, 8, addr_8, 88, begin_cell().store_uint((0xffff + 1) * 5, 24).end_cell().begin_parse());  ;; (addr_7, $91, MFN 3)
+  ;; holla(0x5ce28eea, 6, addr_6, 69, begin_cell().store_uint((0xffff + 1) * 4, 24).end_cell().begin_parse());  ;; (addr_5, $19, MFN 2) #
+  ;; holla(0x5ce28eea, 7, addr_7, 68, begin_cell().store_uint((0xffff + 1) * 4, 24).end_cell().begin_parse());  ;; (addr_6, $219, MFN 10)
+  ;; holla(0x5ce28eea, 8, addr_8, 85, begin_cell().store_uint((0xffff + 1) * 5, 24).end_cell().begin_parse());  ;; (addr_7, $91, MFN 3)
 
   ;; holla(0x5ce28eea, 9, addr_5, 21, begin_cell().store_uint(0xffff * 8, 24).end_cell().begin_parse());  ;; (addr_5, $40, MFN 8)
   
