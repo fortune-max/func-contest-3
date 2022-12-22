@@ -108,7 +108,7 @@ cell dict_set_ref(cell dict, int key_len, slice index, cell value) asm(value ind
     int ct = 0; slice pivot = meta_data_key_sl; int found_nxt = -1;
     while (found_nxt) {
       (pivot, slice participant_data_sl, found_nxt) = dict_get_prev?(participants_dict, 267, pivot);
-      if (found_nxt) {
+      if (found_nxt & (participant_data_sl.preload_uint(128) > 0)) {
         slice validator_entry = begin_cell()
           .store_slice(participant_data_sl) ;; stake (128-bit) & max_factor (4-bit)
           .store_slice(pivot) ;; addr 267-bit
