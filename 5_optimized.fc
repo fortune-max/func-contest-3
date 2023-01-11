@@ -1,0 +1,233 @@
+forall X -> cell force_cast_to_cell(X x) asm "NOP";
+forall X -> slice force_cast_to_slice(X x) asm "NOP";
+int tuple_length( tuple t ) asm "TLEN";
+forall X -> (tuple, X) ~tpop(tuple t) asm "TPOP";
+cell dict_set_ref(cell dict, int key_len, slice index, cell value) asm(value index dict key_len) "DICTSETREF";
+(cell, ()) ~dict_set_ref(cell dict, int key_len, slice index, cell value) asm(value index dict key_len) "DICTSETREF";
+(cell, int) dict_get_ref?(cell dict, int key_len, slice index) asm(index dict key_len) "DICTGETREF" "NULLSWAPIFNOT";
+(slice, int) dict_get?(cell dict, int key_len, slice index) asm(index dict key_len) "DICTGET" "NULLSWAPIFNOT";
+(slice, slice, int) dict_get_next?(cell dict, int key_len, slice pivot) asm(pivot dict key_len -> 1 0 2) "DICTGETNEXT" "NULLSWAPIFNOT2";
+(slice, slice, int) dict_get_prev?(cell dict, int key_len, slice pivot) asm(pivot dict key_len -> 1 0 2) "DICTGETPREV" "NULLSWAPIFNOT2";
+(slice, int) udict_get_2?(cell dict, int key_len, int index) asm(index dict key_len) "DICTUGET" "NULLSWAPIFNOT";
+
+;; testable
+() recv_internal (int msg_value, cell full_message, slice in_msg_body) { ;;}
+  (int op, int query_id) = (in_msg_body~load_uint(32),in_msg_body~load_uint(64));
+  slice full_message_sl = full_message.begin_parse(); full_message_sl~load_uint(4); ;; rm flags
+  slice particpant_addr = full_message_sl~load_msg_addr();
+;; () holla (int op, int query_id, slice particpant_addr, int msg_value, slice in_msg_body) impure {
+  if(op == 0x5ce28eea) {  ;; op::participate
+    int max_factor = min(max(65536, in_msg_body~load_uint(24)), 655360); int participant_idx = 0;
+    cell participation_requests = get_data(); slice participation_requests_sl = participation_requests.begin_parse();
+    cell participants_dict = force_cast_to_cell(1);
+    if (slice_bits(participation_requests_sl) == 0){ ;; first run
+      participants_dict = new_dict();
+    } else {    ;; subsequent run
+      participant_idx = participation_requests_sl~load_uint(8) + 1;
+      participants_dict = participation_requests_sl~load_dict();
+    }
+    slice participant_data_sl = begin_cell()
+      .store_slice(particpant_addr)
+      .store_uint(msg_value, 128)
+      .store_uint(max_factor, 24)
+      .end_cell().begin_parse();
+    participants_dict~udict_set(8, participant_idx, participant_data_sl);
+    participation_requests = begin_cell()
+      .store_uint(participant_idx, 8)
+      .store_dict(participants_dict)
+      .end_cell();
+    set_data(participation_requests);
+  }
+  if(op == 0x207fa5f5) { ;; op::try_elect
+    ;; iterate through all participation requests and form updated max_requests and amounts
+    slice particpation_requests = get_data().begin_parse();
+    int participant_request_ct = particpation_requests~load_uint(8) + 1; int ct = 0;
+    cell participants_dict = particpation_requests~load_dict();
+    cell addr_to_stake_and_max_factor_map = new_dict();
+    int participant_ct = 0; tuple participant_addresses = empty_tuple(); int total_stake = 0;
+    while (ct < participant_request_ct) {
+      (slice participation_entry, _) = udict_get?(participants_dict, 8, ct);
+      slice entry_addr = participation_entry~load_msg_addr();
+      int entry_stake = participation_entry~load_uint(128);
+      int entry_max_factor = participation_entry~load_uint(24);
+      total_stake += entry_stake;
+      ;; try to get last stake first
+      (slice stake_and_max_factor_sl, int previously_staked) = dict_get?(addr_to_stake_and_max_factor_map, 267, entry_addr);
+      if (previously_staked) {
+        entry_stake += stake_and_max_factor_sl.preload_uint(128);
+      } else {
+        participant_ct += 1; participant_addresses~tpush(entry_addr);
+      }
+      stake_and_max_factor_sl = begin_cell()
+        .store_uint(entry_stake, 128)
+        .store_uint(entry_max_factor, 24)
+        .end_cell().begin_parse();
+      addr_to_stake_and_max_factor_map~dict_set(267, entry_addr, stake_and_max_factor_sl);
+      ct += 1;
+    }
+    ;; now has up-to-date requests
+    throw_if(100, participant_ct < 5);    ;; can't form a list with less than 5 participants
+    ;; now create dict using entries as keys with stake as primary discriminator
+    ct = 0; slice dummy_slice = begin_cell().end_cell().begin_parse();
+    cell participant_stake_sorter = new_dict();
+    while (ct < participant_ct) {
+      slice curr_addr = participant_addresses~tpop();
+      (slice stake_and_max_factor_sl, _) = dict_get?(addr_to_stake_and_max_factor_map, 267, curr_addr);
+      slice key_sl = begin_cell().store_slice(stake_and_max_factor_sl).store_slice(curr_addr).end_cell().begin_parse();
+      participant_stake_sorter~dict_set(419, key_sl, dummy_slice); ct += 1;
+    }
+
+    ;; now we iterate from lowest stake as min_effective_stake to highest - 4
+
+    slice curr_min_entry = force_cast_to_slice(1);
+    slice nxt_min_entry = begin_cell().store_uint(0, 256).store_uint(0, 163).end_cell().begin_parse();
+    int best_total_effective_stake = -1; int total_winners = 0;
+    slice best_min_effective_stake_entry = force_cast_to_slice(1); int found_nxt = -1; int candidates_min_effective_ct = participant_ct - 4;
+    while (found_nxt & (candidates_min_effective_ct > 0)) {
+      ;; ~dump(candidates_min_effective_ct);
+      int stop = 0;
+      do {
+        curr_min_entry = nxt_min_entry;
+        (nxt_min_entry, _, found_nxt) = dict_get_next?(participant_stake_sorter, 419, curr_min_entry);
+        if (~ found_nxt) { stop = -1; }
+        else {
+          candidates_min_effective_ct -= 1;
+          if (nxt_min_entry.preload_uint(128) != curr_min_entry.preload_uint(128)) { stop = -1; }
+        }
+      } until (stop);
+      curr_min_entry = nxt_min_entry;
+      if (found_nxt) {
+        int min_effective_stake = curr_min_entry.preload_uint(128); int total_effective_stake = min_effective_stake;
+        int bigger_stake_exists = -1; slice curr_big_entry = curr_min_entry; int winner_ct = 1;
+        while (bigger_stake_exists){
+          (curr_big_entry, _, bigger_stake_exists) = dict_get_next?(participant_stake_sorter, 419, curr_big_entry);
+          if (bigger_stake_exists){
+            slice curr_big_entry_dup = curr_big_entry;  ;; we cant mutate our dict key as we use it for get_next
+            int stake = curr_big_entry_dup~load_uint(128);
+            int max_factor = curr_big_entry_dup~load_uint(24);
+            int effective_stake = min(stake, (max_factor * min_effective_stake) / 65536);
+            total_effective_stake += effective_stake;
+            winner_ct += 1;
+          }
+        }
+        if (total_effective_stake > best_total_effective_stake) {
+          best_min_effective_stake_entry = curr_min_entry;
+          best_total_effective_stake = total_effective_stake;
+          total_winners = winner_ct;
+        }
+      }
+    }
+    int total_effective_stake = best_total_effective_stake;
+    int unused_stake = total_stake - total_effective_stake;
+    ;; ~dump([total_effective_stake, total_winners, unused_stake, total_stake]);
+
+    cell response = begin_cell()
+      .store_uint(0x18, 6)
+      .store_slice(particpant_addr)
+      .store_coins(0)
+      .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1) ;; msg_body starts in next line
+      .store_uint(0xeefa5ea4, 32)   ;; op
+      .store_uint(query_id, 64)     ;; query_id same as try_elect request
+      .store_uint(total_winners, 32)
+      .store_coins(total_effective_stake)
+      .store_coins(unused_stake)
+      .end_cell();
+    send_raw_message(response, 64);
+    ;; set internal storage here
+    cell my_new_data = begin_cell()
+      .store_uint(participant_ct, 8)
+      .store_uint(total_stake, 128)
+      .store_slice(best_min_effective_stake_entry)
+      .store_dict(participant_stake_sorter)
+      .end_cell();
+    set_data(my_new_data);
+  }
+}
+
+;; testable
+(tuple, tuple) get_stake_table() method_id {
+  slice my_new_data_sl = get_data().begin_parse();
+  int participant_ct = my_new_data_sl~load_uint(8);
+  int total_stake = my_new_data_sl~load_uint(128);
+  slice best_min_effective_stake_entry = my_new_data_sl~load_bits(419);
+  cell participant_stake_sorter = my_new_data_sl~load_dict();
+
+  int min_effective_stake = best_min_effective_stake_entry.preload_uint(128);
+  tuple winners = empty_tuple(); tuple unused_funds = empty_tuple();
+  slice curr_min_entry = begin_cell().store_uint(0, 256).store_uint(0, 163).end_cell().begin_parse();
+  int found_nxt = -1;
+  while (found_nxt){
+    (curr_min_entry, _, found_nxt) = dict_get_next?(participant_stake_sorter, 419, curr_min_entry);
+    if (found_nxt) {
+      slice curr_min_entry_dup = curr_min_entry;
+      int stake = curr_min_entry_dup~load_uint(128);
+      int max_factor = curr_min_entry_dup~load_uint(24);
+      slice participant_addr = curr_min_entry_dup;
+      if (stake < min_effective_stake) {  ;; losers
+        tuple sub_tuple = empty_tuple();
+        sub_tuple~tpush(participant_addr);
+        sub_tuple~tpush(stake);
+        unused_funds~tpush(sub_tuple);
+      } else {  ;; winners
+        int effective_stake = min(stake, (max_factor * min_effective_stake) / 65536);
+        if (stake != effective_stake) {   ;; add remaining to unused_funds
+          tuple sub_tuple = empty_tuple();
+          sub_tuple~tpush(participant_addr);
+          sub_tuple~tpush(stake - effective_stake);
+          unused_funds~tpush(sub_tuple);
+        }
+        tuple sub_tuple = empty_tuple();
+        sub_tuple~tpush(participant_addr);
+        sub_tuple~tpush(effective_stake);
+        winners~tpush(sub_tuple);
+      }
+    }
+  }
+  return (winners, unused_funds);
+}
+
+slice gen_addr(int addr){ ;; addr 256-b integer
+  slice addr = begin_cell()
+    .store_uint(2, 2)
+    .store_uint(0, 1)
+    .store_uint(0, 8)
+    .store_uint(addr, 256)
+    .end_cell()
+    .begin_parse();
+  return addr;
+}
+
+() fme (int a, int b) method_id {
+  slice addr_1 = gen_addr(101859951068842955789598003811195617840532065784940813386933245313928310241278);
+  slice addr_2 = gen_addr(94830870153206984875273392226797031161343471984003470313608321980983802462470);
+  slice addr_3 = gen_addr(81195136507700776381861051248094391703741310301827701580908519052777736845893);
+  slice addr_4 = gen_addr(102080646838998606241332844710443160762028100015136901727727579174334361602500);
+  slice addr_5 = gen_addr(69881045423219830829268298333552548002425435544147157433990299455003289804465);
+  slice addr_6 = gen_addr(59535590292810374515814231029614035953677840701666553766531735421872036383587);
+  slice addr_7 = gen_addr(112454378704514877171469106912498232590890625231538212243362224239851055009979);
+  slice addr_8 = gen_addr(94094145806618033257381506439651925479179382071543436055150332793183901352930);
+  ;; ~dump(slice_bits(get_data().begin_parse()) == 68134197439415885698044414435951397869210496020759160419881882418413283430343);
+  ;; ~dump(dict_empty?(new_dict()));
+  ;; ~dump(slice_bits(get_data().begin_parse()) == 0);
+  ;; ~dump([get_stake_table()]);
+  ;; () holla (int op, int query_id, slice particpant_addr, int msg_value, slice in_msg_body){
+
+  ;; holla(0x5ce28eea, 1, addr_1, 16, begin_cell().store_uint((0xffff + 1) * 1, 24).end_cell().begin_parse());  ;; (addr_1, $23, MFN 1) #
+  ;; holla(0x5ce28eea, 2, addr_2, 0, begin_cell().store_uint((0xffff + 1) * 1, 24).end_cell().begin_parse());  ;; (addr_2, $28, MFN 1)
+  ;; holla(0x5ce28eea, 3, addr_3, 34, begin_cell().store_uint((0xffff + 1) * 2, 24).end_cell().begin_parse());  ;; (addr_1, $69, MFN 5)
+  ;; holla(0x5ce28eea, 4, addr_2, 51, begin_cell().store_uint((0xffff + 1) * 3, 24).end_cell().begin_parse());  ;; (addr_3, $95, MFN 10)
+  ;; holla(0x5ce28eea, 5, addr_5, 51, begin_cell().store_uint((0xffff + 1) * 3, 24).end_cell().begin_parse());  ;; (addr_4, $129, MFN 6)
+  ;; holla(0x5ce28eea, 6, addr_6, 68, begin_cell().store_uint((0xffff + 1) * 4, 24).end_cell().begin_parse());  ;; (addr_5, $19, MFN 2) #
+  ;; holla(0x5ce28eea, 7, addr_7, 0, begin_cell().store_uint((0xffff + 1) * 4, 24).end_cell().begin_parse());  ;; (addr_6, $219, MFN 10)
+  ;; holla(0x5ce28eea, 8, addr_8, 85, begin_cell().store_uint((0xffff + 1) * 5, 24).end_cell().begin_parse());  ;; (addr_7, $91, MFN 3)
+
+  
+  ;; [(addr_6, $219, MFN 10), (addr_4, $129, MFN 6), (addr_3, $95, MFN 10), (addr_7, $91, MFN 3), (addr_1, $69, MFN 5), (addr_5, $40, MFN 8), 
+  ;; (addr_2, $28, MFN 1)]
+  
+  ;; holla(0x207fa5f5, 10, addr_8, 0, begin_cell().end_cell().begin_parse());
+
+  ~dump([get_stake_table()]);
+  
+  ;; ~dump([get_stake_table()]);
+}
