@@ -61,16 +61,6 @@ int add_cell_to_tuple(slice slice_to_add) {
   }
 }
 
-int tuple_within_limits?(tuple final_result) impure {
-  int ct = 0;
-  while (ct < 255) {
-    (int cell_ct, int bits_ct, _) = compute_data_size(final_result.at(ct), 9000); ct += 1;
-    while (cell_ct >= 1000) { ~dump(99); }
-    while (bits_ct >= 40000) { ~dump(99); }
-  }
-  return -1;
-}
-
 ;; testable
 tuple decomposite (cell big_cell, slice destination_address) method_id {
   big_cell_dup = big_cell; tuple_dict_decompose = new_dict();
@@ -99,13 +89,11 @@ tuple decomposite (cell big_cell, slice destination_address) method_id {
     int already_stored = add_cell_to_tuple(to_add);
     (curr_path, some_cells_left) = get_next_path(curr_path, already_stored);
   } until (some_cells_left == 0);
-  ;; (int cell_ct, int bit_ct, _) = compute_data_size(big_cell, 9000); throw_if(100, cell_ct >= 4000);
   int ct = 0; tuple final_result = empty_tuple();
   while (ct < 255) {
     (cell tuple_elem, _) = udict_get_ref_2?(tuple_dict_decompose, 8, ct);
     final_result~tpush(tuple_elem); ct += 1;
   }
-  tuple_within_limits?(final_result);
   return final_result;
 }
 
@@ -152,7 +140,7 @@ cell compose(tuple final_result) {
   }
 
   int instantiated_cell_ct = -1;
-  while (instantiated_cell_ct != 0) { ;; todo use do-while if this is problematic
+  while (instantiated_cell_ct != 0) {
     int tuple_idx = 1; instantiated_cell_ct = 0;
     while (tuple_idx < 252) {  ;; 1 - 251 tuple_idx used
       int last_hash = 0; int found_nxt = -1; int success = 0;
@@ -216,7 +204,6 @@ cell compose(tuple final_result) {
       int dest_addr_hash = large_cell_hash_sl~load_uint(256);
       (slice dest_address, _) = udict_get_2?(meta_data, 8, 1);
       cell large_cell = compose(final_result);
-      ;; ~dump([299, cell_hash(large_cell), large_cell, large_cell.begin_parse()]);
       cell msg_to_send = begin_cell()
         .store_uint(0x18, 6)
         .store_slice(dest_address)
@@ -224,8 +211,6 @@ cell compose(tuple final_result) {
         .store_uint(1, 107)
         .store_ref(large_cell)
         .end_cell();
-      ;; while (large_cell_hash != cell_hash(large_cell)) { ~dump(99); }
-      ;; while (dest_addr_hash != slice_hash(dest_address)) { ~dump(99); }
       send_raw_message(msg_to_send, 0);
       set_data(begin_cell().store_uint(1, 1).end_cell());
     } else {
