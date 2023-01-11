@@ -1,3 +1,15 @@
+# TON Smart Challenge 3 - My solutions
+
+These are my solutions to the third instalment of the TSC challenges organized by the TON Foundation. The aim of these contests is to familiarize developers with writing smart contracts using the TVM's (TON Virtual Machine's) unique stack-based programming language - FunC, as the language is known to have a steep learning curve and uses an entirely different paradigm from most conventional programming languages and can be a bit daunting for incoming TON developers.
+
+The contest tasks have steadily increased in difficulty across rounds with TSC3 being the hardest yet. I was able to solve all 5 tasks (shown below) before the deadline and have made my solutions public on this repository.
+
+My final position was 11th place out of 97 contestants, and my total take-home prize from both rounds was 868 TON (slightly over 2000 USD). I also went on to report a vulnerability I noticed during the contest and won an additional 1000 TON (~2400 USD).
+
+In all, the contest was a great learning experience for me and I learned a lot more about FunC development. I look forward to working more with FunC and TON in the future.
+
+#### Web3 FTW!
+
 # Welcome to the TON Smart Challenge #3 by the TON Foundation
 
 There are five tasks listed below
@@ -220,6 +232,3 @@ These tools allow you to work with FunC smart contracts, compile them, and run l
 If for some reason you don’t want to use the tool, you can use the FunC compiler and Fift scripts [directly](https://ton.org/docs/#/smart-contracts/?id=func).
 
 For syntax highlighting, you can use either the [TON IDEA Plugin](https://plugins.jetbrains.com/plugin/18541-ton-development) or [Sublime Text Plugin](https://github.com/savva425/func_plugin_sublimetext3).
-# func-contest-3
-# func-contest-3
-# func-contest-3
